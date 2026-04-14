@@ -19,7 +19,7 @@ $nik        = isset($_POST['nik'])        ? (int) trim($_POST['nik'])           
 $password   = isset($_POST['password'])   ? mysqli_real_escape_string($conn, trim($_POST['password']))       : '';
 $qc_machine = isset($_POST['qc_machine']) ? mysqli_real_escape_string($conn, trim($_POST['qc_machine']))     : '';
 
-$allowed_machines = ['CMM', 'RUNCOM', 'ROUGHNESS', 'CONTOURE', 'PROFIL', 'MANUAL'];
+$allowed_machines = ['CMM', 'RUNCOM', 'ROUGHNESS', 'CONTOUR', 'PROFIL', 'MANUAL', 'CUTTING WHEEL & ETCHING NITRAT', 'DEPTH CASE', 'HARDNESS TESTER'];
 
 if ($order_id <= 0) {
     header("Location: main_display.php?section=job&error_order=1");

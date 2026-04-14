@@ -59,10 +59,12 @@ $query = mysqli_query($conn, "
         MAX(CASE WHEN sps.qc_machine = 'CMM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_done,
         MAX(CASE WHEN sps.qc_machine = 'RUNCOM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS runcom_done,
         MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS' AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
-        MAX(CASE WHEN sps.qc_machine = 'CONTOURE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contoure_done,
+        MAX(CASE WHEN sps.qc_machine = 'CONTOUR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
         MAX(CASE WHEN sps.qc_machine = 'PROFIL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
-        MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done
-        
+        MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
+        MAX(CASE WHEN sps.qc_machine = 'CUTTING WHEEL & ETCHING NITRAT' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cutting_wheel_done,
+        MAX(CASE WHEN sps.qc_machine = 'DEPTH CASE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS depth_case_done,
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS TESTER' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_tester_done
 
     FROM sampling_orders so
     JOIN master_parts mp ON so.part_id = mp.id
@@ -217,8 +219,8 @@ function renderCards($rows, $mode = 'waiting') {
             </div>
 
             <div class="job-card-row">
-                <span>CONTOURE</span>
-                <strong><?php echo ((int)$row['contoure_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <span>CONTOUR</span>
+                <strong><?php echo ((int)$row['contour_done'] === 1) ? '✅' : '⬜'; ?></strong>
             </div>
 
             <div class="job-card-row">
@@ -232,6 +234,21 @@ function renderCards($rows, $mode = 'waiting') {
                 <strong><?php echo ((int)$row['manual_done'] === 1) ? '✅' : '⬜'; ?></strong>
             </div>
 
+            <div class="job-card-row">
+                <span>CUTTING WHEEL & ETCHING NITRAT</span>
+                <strong><?php echo ((int)$row['cutting_wheel_done'] === 1) ? '✅' : '⬜'; ?></strong>
+
+            </div>
+            
+            <div class="job-card-row">
+                <span>DEPTH CASE</span>
+                <strong><?php echo ((int)$row['depth_case_done'] === 1) ? '✅' : '⬜'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>HARDNESS TESTER</span>
+                <strong><?php echo ((int)$row['hardness_tester_done'] === 1) ? '✅' : '⬜'; ?></strong>
+            </div>
 
 
             <?php if (!empty($row['start_time'])): ?>
@@ -424,9 +441,12 @@ function renderCards($rows, $mode = 'waiting') {
                     <option value="CMM">CMM</option>
                     <option value="RUNCOM">RUNCOM</option>
                     <option value="ROUGHNESS">ROUGHNESS</option>
-                    <option value="CONTOURE">CONTOURE</option>
+                    <option value="CONTOUR">CONTOUR</option>
                     <option value="PROFIL">PROFIL</option>
                     <option value="MANUAL">MANUAL</option>
+                    <option value="CUTTING WHEEL & ETCHING NITRAT">CUTTING WHEEL & ETCHING NITRAT</option>
+                    <option value="DEPTH CASE">DEPTH CASE</option>
+                    <option value="HARDNESS TESTER">HARDNESS TESTER</option>
                 </select>
 
                 <div class="modal-actions">

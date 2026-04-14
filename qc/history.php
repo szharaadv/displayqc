@@ -46,7 +46,10 @@ $query = mysqli_query($conn, "
         MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS' AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
         MAX(CASE WHEN sps.qc_machine = 'PROFIL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
         MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
-        MAX(CASE WHEN sps.qc_machine = 'CONTOURE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contoure_done,
+        MAX(CASE WHEN sps.qc_machine = 'CONTOUR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
+        MAX(CASE WHEN sps.qc_machine = 'CUTTING WHEEL & ETCHING NITRAT' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cutting_wheel_done,
+        MAX(CASE WHEN sps.qc_machine = 'DEPTH CASE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS depth_case_done,
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS TESTER' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_tester_done,
 
         MIN(sps.start_time) AS latest_start_time,
         MAX(sps.end_time) AS latest_end_time,
@@ -110,9 +113,12 @@ $query = mysqli_query($conn, "
                         <th class="col-check">CMM</th>
                         <th class="col-check">RUNCOM</th>
                         <th class="col-check">ROUGHNESS</th>
-                        <th class="col-check">CONTOURE</th>
+                        <th class="col-check">CONTOUR</th>
                         <th class="col-check">PROFIL</th>
                         <th class="col-check">MANUAL</th>
+                        <th class="col-check">CUTTING WHEEL & ETCHING NITRAT</th>
+                        <th class="col-check">DEPTH CASE</th>
+                        <th class="col-check">HARDNESS TESTER</th>
                         <th class="col-datetime">Start</th>
                         <th class="col-datetime">Finish</th>
                         <th class="col-status">Status</th>
@@ -146,7 +152,7 @@ $query = mysqli_query($conn, "
                                 </td>
 
                                 <td class="col-check">
-                                    <?php echo ((int)$row['contoure_done'] === 1) ? '✅' : '⬜'; ?>
+                                    <?php echo ((int)$row['contour_done'] === 1) ? '✅' : '⬜'; ?>
                                 </td>
 
                                 <td class="col-check">
@@ -155,6 +161,18 @@ $query = mysqli_query($conn, "
                                 
                                 <td class="col-check">
                                     <?php echo ((int)$row['manual_done'] === 1) ? '✅' : '⬜'; ?>
+                                </td>
+
+                                <td class="col-check">
+                                    <?php echo ((int)$row['cutting_wheel_done'] === 1) ? '✅' : '⬜'; ?>
+                                </td>
+
+                                <td class="col-check">
+                                    <?php echo ((int)$row['depth_case_done'] === 1) ? '✅' : '⬜'; ?>
+                                </td>
+                                
+                                <td class="col-check">
+                                    <?php echo ((int)$row['hardness_tester_done'] === 1) ? '✅' : '⬜'; ?>
                                 </td>
 
                                 <td class="col-datetime">
