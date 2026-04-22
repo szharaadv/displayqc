@@ -57,14 +57,12 @@ $query = mysqli_query($conn, "
         ) AS qc_nama,
 
         MAX(CASE WHEN sps.qc_machine = 'CMM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_done,
-        MAX(CASE WHEN sps.qc_machine = 'RUNCOM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS runcom_done,
+        MAX(CASE WHEN sps.qc_machine = 'RONDCOM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS rondcom_done,
         MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS' AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
         MAX(CASE WHEN sps.qc_machine = 'CONTOUR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
-        MAX(CASE WHEN sps.qc_machine = 'PROFIL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
+        MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
         MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
-        MAX(CASE WHEN sps.qc_machine = 'CUTTING WHEEL & ETCHING NITRAT' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cutting_wheel_done,
-        MAX(CASE WHEN sps.qc_machine = 'DEPTH CASE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS depth_case_done,
-        MAX(CASE WHEN sps.qc_machine = 'HARDNESS TESTER' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_tester_done
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done
 
     FROM sampling_orders so
     JOIN master_parts mp ON so.part_id = mp.id
@@ -205,51 +203,38 @@ function renderCards($rows, $mode = 'waiting') {
 
             <div class="job-card-row">
                 <span>CMM</span>
-                <strong><?php echo ((int)$row['cmm_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <strong><?php echo ((int)$row['cmm_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
 
             <div class="job-card-row">
-                <span>RUNCOM</span>
-                <strong><?php echo ((int)$row['runcom_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <span>RONDCOM</span>
+                <strong><?php echo ((int)$row['rondcom_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
 
             <div class="job-card-row">
                 <span>ROUGHNESS</span>
-                <strong><?php echo ((int)$row['roughness_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <strong><?php echo ((int)$row['roughness_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
 
             <div class="job-card-row">
                 <span>CONTOUR</span>
-                <strong><?php echo ((int)$row['contour_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <strong><?php echo ((int)$row['contour_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
 
             <div class="job-card-row">
-                <span>PROFIL</span>
-                <strong><?php echo ((int)$row['profil_done'] === 1) ? '✅' : '⬜'; ?></strong>
-
+                <span>PROFIL PROJECTOR</span>
+                <strong><?php echo ((int)$row['profil_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
-            
+
             <div class="job-card-row">
                 <span>MANUAL</span>
-                <strong><?php echo ((int)$row['manual_done'] === 1) ? '✅' : '⬜'; ?></strong>
+                <strong><?php echo ((int)$row['manual_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
 
             <div class="job-card-row">
-                <span>CUTTING WHEEL & ETCHING NITRAT</span>
-                <strong><?php echo ((int)$row['cutting_wheel_done'] === 1) ? '✅' : '⬜'; ?></strong>
-
+                <span>HARDNESS CHECK</span>
+                <strong><?php echo ((int)$row['hardness_check_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
             </div>
-            
-            <div class="job-card-row">
-                <span>DEPTH CASE</span>
-                <strong><?php echo ((int)$row['depth_case_done'] === 1) ? '✅' : '⬜'; ?></strong>
-            </div>
-
-            <div class="job-card-row">
-                <span>HARDNESS TESTER</span>
-                <strong><?php echo ((int)$row['hardness_tester_done'] === 1) ? '✅' : '⬜'; ?></strong>
-            </div>
-
 
             <?php if (!empty($row['start_time'])): ?>
                 <div class="job-card-row">
@@ -365,7 +350,7 @@ function renderCards($rows, $mode = 'waiting') {
             <?php endif; ?>
 
             <?php if (isset($_GET['error_machine'])): ?>
-                <p class="error">Mesin QC tidak valid. Pilih CMM, RUNCOM, atau ROUGHNESS.</p>
+                <p class="error">Mesin QC tidak valid. Pilih CMM, RONDCOM, atau ROUGHNESS.</p>
             <?php endif; ?>
 
             <?php if (isset($_GET['error_order'])): ?>
@@ -439,14 +424,12 @@ function renderCards($rows, $mode = 'waiting') {
                 <select name="qc_machine" required>
                     <option value="">-- Pilih Mesin QC --</option>
                     <option value="CMM">CMM</option>
-                    <option value="RUNCOM">RUNCOM</option>
+                    <option value="RONDCOM">RONDCOM</option>
                     <option value="ROUGHNESS">ROUGHNESS</option>
                     <option value="CONTOUR">CONTOUR</option>
-                    <option value="PROFIL">PROFIL</option>
+                    <option value="PROFIL PROJECTOR">PROFIL PROJECTOR</option>
                     <option value="MANUAL">MANUAL</option>
-                    <option value="CUTTING WHEEL & ETCHING NITRAT">CUTTING WHEEL & ETCHING NITRAT</option>
-                    <option value="DEPTH CASE">DEPTH CASE</option>
-                    <option value="HARDNESS TESTER">HARDNESS TESTER</option>
+                    <option value="HARDNESS CHECK">HARDNESS CHECK</option>
                 </select>
 
                 <div class="modal-actions">

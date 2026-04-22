@@ -7,6 +7,7 @@ if (!isset($_SESSION['id'])) {
 }
 
 $is_qc = isset($_SESSION['role']) && $_SESSION['role'] === 'qc';
+$is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 ?>
 <!DOCTYPE html>
 <html>
@@ -32,6 +33,13 @@ $is_qc = isset($_SESSION['role']) && $_SESSION['role'] === 'qc';
                     <span>Order Request</span>
                     <span class="arrow">→</span>
                 </a>
+
+                <?php if ($is_admin): ?>
+                <a href="admin/dashboard.php" class="menu-item">
+                    <span>Manager Dashboard</span>
+                    <span class="arrow">→</span>
+                </a>
+                <?php endif; ?>
 
                 <?php if ($is_qc): ?>
                 <a href="qc/main_display.php" class="menu-item">

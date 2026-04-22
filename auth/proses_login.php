@@ -2,17 +2,17 @@
 session_start();
 include '../config/koneksi.php';
 
-$nik      = $_POST['nik']      ?? '';
-$password = $_POST['password'] ?? '';
+$nik      = trim($_POST['nik']      ?? '');
+$password = trim($_POST['password'] ?? '');
 
 if (empty($nik) || empty($password)) {
     header("Location: login.php?error=1");
     exit;
 }
 
-$nik_int = (int)$nik;
+$nik_esc = mysqli_real_escape_string($conn, $nik);
 
-$query = mysqli_query($conn, "SELECT * FROM users WHERE nik=$nik_int AND status=1");
+$query = mysqli_query($conn, "SELECT * FROM users WHERE nik='$nik_esc' AND status=1 LIMIT 1");
 $user  = mysqli_fetch_assoc($query);
 
 if ($user && $password === $user['password']) {
@@ -20,6 +20,7 @@ if ($user && $password === $user['password']) {
 
     $_SESSION['id']   = $user['id'];
     $_SESSION['nik']  = $user['nik'];
+    $_SESSION['nama'] = $user['nama'];
     $_SESSION['role'] = $user['role'];
 
     header("Location: ../menu.php");

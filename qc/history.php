@@ -42,18 +42,17 @@ $query = mysqli_query($conn, "
         mm.machine_jig_catalog,
 
         MAX(CASE WHEN sps.qc_machine = 'CMM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_done,
-        MAX(CASE WHEN sps.qc_machine = 'RUNCOM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS runcom_done,
+        MAX(CASE WHEN sps.qc_machine = 'RONDCOM' AND sps.status = 'done' THEN 1 ELSE 0 END) AS rondcom_done,
         MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS' AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
-        MAX(CASE WHEN sps.qc_machine = 'PROFIL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
-        MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
         MAX(CASE WHEN sps.qc_machine = 'CONTOUR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
-        MAX(CASE WHEN sps.qc_machine = 'CUTTING WHEEL & ETCHING NITRAT' AND sps.status = 'done' THEN 1 ELSE 0 END) AS cutting_wheel_done,
-        MAX(CASE WHEN sps.qc_machine = 'DEPTH CASE' AND sps.status = 'done' THEN 1 ELSE 0 END) AS depth_case_done,
-        MAX(CASE WHEN sps.qc_machine = 'HARDNESS TESTER' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_tester_done,
+        MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
+        MAX(CASE WHEN sps.qc_machine = 'MANUAL' AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK' AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done,
 
         MIN(sps.start_time) AS latest_start_time,
         MAX(sps.end_time) AS latest_end_time,
         MAX(u.nama) AS qc_nama
+
     FROM sampling_orders so
     JOIN master_parts mp ON so.part_id = mp.id
     JOIN master_lines ml ON so.line_id = ml.id
@@ -74,7 +73,36 @@ $query = mysqli_query($conn, "
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>History QC</title>
-    <link rel="stylesheet" href="../assets/style.css?v=21">
+    <link rel="stylesheet" href="../assets/style.css?v=22">
+    <style>
+                    .history-table th {
+                background: var(--surface2);
+                color: var(--text2);
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                white-space: normal;
+                word-break: break-word;
+                vertical-align: middle;
+                text-align: center;
+                padding: 10px 6px;
+                line-height: 1.3;
+            }
+            .history-table td {
+                font-size: 12px;
+                vertical-align: middle;
+                padding: 10px 6px;
+            }
+            .col-order    { width: 5%;  min-width: 60px; }
+            .col-part     { width: 10%; min-width: 90px; }
+            .col-line     { width: 5%;  min-width: 50px; }
+            .col-machine  { width: 7%;  min-width: 65px; }
+            .col-staff    { width: 5%;  min-width: 50px; }
+            .col-check    { width: 4%;  min-width: 44px; text-align: center; font-size: 14px; }
+            .col-datetime { width: 6%;  min-width: 72px; font-size: 11px; font-family: var(--font-mono); }
+            .col-status   { width: 6%;  min-width: 70px; text-align: center; }
+    </style>
 </head>
 <body class="history-page">
     <div class="history-container">
@@ -86,10 +114,10 @@ $query = mysqli_query($conn, "
 
             <label>Filter Status</label>
             <select name="status">
-                <option value="all" <?php echo $status_filter === 'all' ? 'selected' : ''; ?>>Semua</option>
-                <option value="waiting" <?php echo $status_filter === 'waiting' ? 'selected' : ''; ?>>Order Request</option>
-                <option value="in_progress" <?php echo $status_filter === 'in_progress' ? 'selected' : ''; ?>>In Progress / Partial</option>
-                <option value="done" <?php echo $status_filter === 'done' ? 'selected' : ''; ?>>Done</option>
+                <option value="all"        <?php echo $status_filter === 'all'        ? 'selected' : ''; ?>>Semua</option>
+                <option value="waiting"    <?php echo $status_filter === 'waiting'    ? 'selected' : ''; ?>>Order Request</option>
+                <option value="in_progress"<?php echo $status_filter === 'in_progress'? 'selected' : ''; ?>>In Progress / Partial</option>
+                <option value="done"       <?php echo $status_filter === 'done'       ? 'selected' : ''; ?>>Done</option>
             </select>
 
             <div class="history-filter-actions">
@@ -101,34 +129,38 @@ $query = mysqli_query($conn, "
 
         <br>
 
-        <div class="history-table-wrap">
+        <div class="history-table-wrap" style="max-height: calc(100vh - 260px); overflow-y: auto; overflow-x: auto;">
             <table class="history-table">
-                <thead>
+                <thead style="position: sticky; top: 0; z-index: 10;">
                     <tr>
-                        <th class="col-order">Order Code</th>
-                        <th class="col-part">Part</th>
-                        <th class="col-line">Line</th>
-                        <th class="col-machine">Machine/Jig</th>
-                        <th class="col-staff">QC Staff</th>
+                        <th class="col-order">ORDER<br>CODE</th>
+                        <th class="col-part">PART</th>
+                        <th class="col-line">LINE</th>
+                        <th class="col-machine">MACHINE/<br>JIG</th>
+                        <th class="col-staff">QC<br>STAFF</th>
                         <th class="col-check">CMM</th>
-                        <th class="col-check">RUNCOM</th>
-                        <th class="col-check">ROUGHNESS</th>
-                        <th class="col-check">CONTOUR</th>
-                        <th class="col-check">PROFIL</th>
+                        <th class="col-check">ROND<br>COM</th>
+                        <th class="col-check">ROUGH<br>NESS</th>
+                        <th class="col-check">CON<br>TOUR</th>
+                        <th class="col-check">PROFIL<br>PROJ.</th>
                         <th class="col-check">MANUAL</th>
-                        <th class="col-check">CUTTING WHEEL & ETCHING NITRAT</th>
-                        <th class="col-check">DEPTH CASE</th>
-                        <th class="col-check">HARDNESS TESTER</th>
-                        <th class="col-datetime">Start</th>
-                        <th class="col-datetime">Finish</th>
-                        <th class="col-status">Status</th>
+                        <th class="col-check">HARD<br>NESS</th>
+                        <th class="col-datetime">START</th>
+                        <th class="col-datetime">FINISH</th>
+                        <th class="col-status">STATUS</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (mysqli_num_rows($query) > 0): ?>
                         <?php while ($row = mysqli_fetch_assoc($query)): ?>
                             <tr>
-                                <td class="col-order"><?php echo htmlspecialchars($row['order_code']); ?></td>
+                                <td class="col-order" style="font-family: var(--font-mono); font-size: 10px;">
+                                    <?php
+                                    $code = htmlspecialchars($row['order_code']);
+                                    // Tampilkan hanya bagian angkanya saja, buang prefix ORD-
+                                    echo substr(str_replace('ORD-', '', $code), -8);
+                                    ?>
+                                </td>
 
                                 <td class="col-part">
                                     <div class="history-part-name"><?php echo htmlspecialchars($row['part_name']); ?></div>
@@ -139,46 +171,17 @@ $query = mysqli_query($conn, "
                                 <td class="col-machine"><?php echo htmlspecialchars($row['machine_jig_catalog']); ?></td>
                                 <td class="col-staff"><?php echo $row['qc_nama'] ? htmlspecialchars($row['qc_nama']) : '-'; ?></td>
 
-                                <td class="col-check">
-                                    <?php echo ((int)$row['cmm_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['runcom_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['roughness_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['contour_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['profil_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-                                
-                                <td class="col-check">
-                                    <?php echo ((int)$row['manual_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['cutting_wheel_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-
-                                <td class="col-check">
-                                    <?php echo ((int)$row['depth_case_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
-                                
-                                <td class="col-check">
-                                    <?php echo ((int)$row['hardness_tester_done'] === 1) ? '✅' : '⬜'; ?>
-                                </td>
+                                <td class="col-check"><?php echo ((int)$row['cmm_done']          === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['rondcom_done']       === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['roughness_done']     === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['contour_done']       === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['profil_done']        === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['manual_done']        === 1) ? '✅' : '⬜'; ?></td>
+                                <td class="col-check"><?php echo ((int)$row['hardness_check_done']=== 1) ? '✅' : '⬜'; ?></td>
 
                                 <td class="col-datetime">
                                     <?php echo $row['latest_start_time'] ? htmlspecialchars($row['latest_start_time']) : '-'; ?>
                                 </td>
-
                                 <td class="col-datetime">
                                     <?php echo $row['latest_end_time'] ? htmlspecialchars($row['latest_end_time']) : '-'; ?>
                                 </td>
@@ -200,7 +203,7 @@ $query = mysqli_query($conn, "
                         <?php endwhile; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="13" class="history-empty">Tidak ada data pada tanggal ini.</td>
+                            <td colspan="15" class="history-empty">Tidak ada data pada tanggal ini.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -208,6 +211,7 @@ $query = mysqli_query($conn, "
         </div>
     </div>
 
+    <!-- Export Modal -->
     <div id="exportModal" class="modal-overlay">
         <div class="modal-box">
             <h3>Export History QC</h3>
@@ -222,10 +226,10 @@ $query = mysqli_query($conn, "
 
                 <label>Filter Status</label>
                 <select name="status">
-                    <option value="all" <?php echo $status_filter === 'all' ? 'selected' : ''; ?>>Semua</option>
-                    <option value="waiting" <?php echo $status_filter === 'waiting' ? 'selected' : ''; ?>>Order Request</option>
+                    <option value="all"         <?php echo $status_filter === 'all'         ? 'selected' : ''; ?>>Semua</option>
+                    <option value="waiting"     <?php echo $status_filter === 'waiting'     ? 'selected' : ''; ?>>Order Request</option>
                     <option value="in_progress" <?php echo $status_filter === 'in_progress' ? 'selected' : ''; ?>>In Progress / Partial</option>
-                    <option value="done" <?php echo $status_filter === 'done' ? 'selected' : ''; ?>>Done</option>
+                    <option value="done"        <?php echo $status_filter === 'done'        ? 'selected' : ''; ?>>Done</option>
                 </select>
 
                 <div class="modal-actions">
@@ -237,23 +241,13 @@ $query = mysqli_query($conn, "
     </div>
 
     <script>
-        const exportModal = document.getElementById('exportModal');
+        const exportModal     = document.getElementById('exportModal');
         const openExportModal = document.getElementById('openExportModal');
-        const closeExportModal = document.getElementById('closeExportModal');
+        const closeExportModal= document.getElementById('closeExportModal');
 
-        openExportModal.addEventListener('click', function () {
-            exportModal.style.display = 'flex';
-        });
-
-        closeExportModal.addEventListener('click', function () {
-            exportModal.style.display = 'none';
-        });
-
-        window.addEventListener('click', function (e) {
-            if (e.target === exportModal) {
-                exportModal.style.display = 'none';
-            }
-        });
+        openExportModal.addEventListener('click', () => exportModal.style.display = 'flex');
+        closeExportModal.addEventListener('click', () => exportModal.style.display = 'none');
+        window.addEventListener('click', e => { if (e.target === exportModal) exportModal.style.display = 'none'; });
     </script>
 </body>
 </html>
