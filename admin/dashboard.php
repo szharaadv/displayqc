@@ -6,7 +6,7 @@ include '../config/koneksi.php';
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: ../auth/login_manager.php");
+    header("Location: ../auth/login.php");
     exit;
 }
 

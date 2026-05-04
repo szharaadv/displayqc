@@ -854,3 +854,10 @@ body.login-page {
     .history-container { width: calc(100% - 20px); padding: 16px; }
     .history-table { min-width: 1100px; }
 }
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
