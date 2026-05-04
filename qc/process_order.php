@@ -15,10 +15,10 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$order_id   = isset($_POST['order_id'])   ? (int) $_POST['order_id']                                        : 0;
-$nik        = isset($_POST['nik'])        ? (int) trim($_POST['nik'])                                        : 0;
-$password   = isset($_POST['password'])   ? mysqli_real_escape_string($conn, trim($_POST['password']))       : '';
-$qc_machine = isset($_POST['qc_machine']) ? mysqli_real_escape_string($conn, trim($_POST['qc_machine']))     : '';
+$order_id   = isset($_POST['order_id'])   ? (int) $_POST['order_id']                                    : 0;
+$nik        = isset($_POST['nik'])        ? mysqli_real_escape_string($conn, trim($_POST['nik']))        : '';
+$password   = isset($_POST['password'])   ? trim($_POST['password'])                                     : '';
+$qc_machine = isset($_POST['qc_machine']) ? mysqli_real_escape_string($conn, trim($_POST['qc_machine'])) : '';
 
 $allowed_machines = ['CMM', 'RONDCOM', 'ROUGHNESS', 'CONTOUR', 'PROFIL PROJECTOR', 'MANUAL', 'HARDNESS CHECK'];
 
@@ -32,11 +32,10 @@ if (!in_array($qc_machine, $allowed_machines, true)) {
     exit;
 }
 
-// ✅ NIK pakai INT (tanpa quotes) supaya cocok dengan tipe kolom DB
 $userQuery = mysqli_query($conn, "
     SELECT *
     FROM users
-    WHERE nik = $nik
+    WHERE nik = '$nik'
       AND role = 'qc'
       AND status = 1
     LIMIT 1
@@ -48,7 +47,6 @@ if (!$userQuery || mysqli_num_rows($userQuery) === 0) {
 }
 
 $user = mysqli_fetch_assoc($userQuery);
-
 if (!password_verify($password, $user['password'])) {
     header("Location: main_display.php?section=job&error_qc=1");
     exit;

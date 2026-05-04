@@ -5,1037 +5,462 @@ include '../config/koneksi.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
-if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
+if (!isset($_SESSION['id'])) {
     header("Location: ../auth/login.php");
     exit;
 }
 
-$date_from    = isset($_GET['date_from']) && $_GET['date_from'] !== '' ? $_GET['date_from'] : date('Y-m-d');
-$date_to      = isset($_GET['date_to'])   && $_GET['date_to']   !== '' ? $_GET['date_to']   : date('Y-m-d');
-$selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
-
-$staffList = [];
-$staffQuery = mysqli_query($conn, "SELECT id, nik, nama FROM users WHERE role = 'qc' ORDER BY nama ASC");
-while ($s = mysqli_fetch_assoc($staffQuery)) $staffList[] = $s;
-
-$whereNik = "";
-if ($selected_nik !== 'all') {
-    $nik_esc  = mysqli_real_escape_string($conn, $selected_nik);
-    $whereNik = " AND u.nik = '$nik_esc' ";
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
+    header("Location: display.php");
+    exit;
 }
+
+$section = isset($_GET['section']) ? $_GET['section'] : 'job';
+$today = date('Y-m-d');
 
 $query = mysqli_query($conn, "
     SELECT
-        u.id, u.nama, u.nik,
-        COUNT(DISTINCT sps.order_id) AS total_order,
-        COUNT(sps.id) AS total_step,
-        AVG(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS avg_duration,
-        SUM(CASE WHEN sps.qc_machine = 'CMM'              AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_count,
-        SUM(CASE WHEN sps.qc_machine = 'RONDCOM'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS rondcom_count,
-        SUM(CASE WHEN sps.qc_machine = 'ROUGHNESS'        AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_count,
-        SUM(CASE WHEN sps.qc_machine = 'CONTOUR'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_count,
-        SUM(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_count,
-        SUM(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_count,
-        SUM(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_count
-    FROM users u
-    LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
-        AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-        AND sps.status = 'done'
-    WHERE u.role = 'qc' $whereNik
-    GROUP BY u.id, u.nama, u.nik
-    ORDER BY total_step DESC
+        so.id,
+        so.order_code,
+        so.category,
+        so.qty,
+        so.status,
+        so.created_at,
+        mp.part_no,
+        mp.part_name,
+        ml.catalog_line,
+        mm.machine_jig_catalog,
+
+        (
+            SELECT s1.qc_machine
+            FROM sampling_process_steps s1
+            WHERE s1.order_id = so.id
+            ORDER BY s1.id DESC
+            LIMIT 1
+        ) AS qc_machine,
+
+        (
+            SELECT s2.start_time
+            FROM sampling_process_steps s2
+            WHERE s2.order_id = so.id
+              AND s2.status = 'in_progress'
+            ORDER BY s2.id DESC
+            LIMIT 1
+        ) AS start_time,
+
+        (
+            SELECT u.nama
+            FROM sampling_process_steps s3
+            LEFT JOIN users u ON s3.qc_user_id = u.id
+            WHERE s3.order_id = so.id
+            ORDER BY s3.id DESC
+            LIMIT 1
+        ) AS qc_nama,
+
+        MAX(CASE WHEN sps.qc_machine = 'CMM'              AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_done,
+        MAX(CASE WHEN sps.qc_machine = 'RONDCOM'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS rondcom_done,
+        MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS'        AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
+        MAX(CASE WHEN sps.qc_machine = 'CONTOUR'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
+        MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
+        MAX(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done
+
+    FROM sampling_orders so
+    JOIN master_parts mp ON so.part_id = mp.id
+    JOIN master_lines ml ON so.line_id = ml.id
+    JOIN master_machines mm ON so.machine_id = mm.id
+    LEFT JOIN sampling_process_steps sps ON sps.order_id = so.id
+    WHERE (
+        DATE(so.created_at) = '$today'
+        OR so.status IN ('waiting', 'in_progress', 'partial_done')
+    )
+    GROUP BY
+        so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
+        mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
+    ORDER BY so.id DESC
 ");
-$staff_data = [];
-while ($row = mysqli_fetch_assoc($query)) $staff_data[] = $row;
 
-$daily_data = [];
-if ($selected_nik !== 'all') {
-    $nik_esc2   = mysqli_real_escape_string($conn, $selected_nik);
-    $dailyQuery = mysqli_query($conn, "
-        SELECT DATE(sps.created_at) AS tgl,
-               COUNT(DISTINCT sps.order_id) AS total_order,
-               COUNT(sps.id) AS total_step
-        FROM sampling_process_steps sps
-        JOIN users u ON sps.qc_user_id = u.id
-        WHERE u.nik = '$nik_esc2'
-          AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
-        GROUP BY DATE(sps.created_at)
-        ORDER BY tgl ASC
-    ");
-    while ($d = mysqli_fetch_assoc($dailyQuery)) $daily_data[] = $d;
+$waiting  = [];
+$progress = [];
+$done     = [];
+
+while ($row = mysqli_fetch_assoc($query)) {
+    if ($row['status'] === 'waiting') {
+        $waiting[] = $row;
+    } elseif ($row['status'] === 'in_progress' || $row['status'] === 'partial_done') {
+        $progress[] = $row;
+    } elseif ($row['status'] === 'done') {
+        $done[] = $row;
+    }
 }
 
-// ── Operation Ratio Queries ──────────────────────────────────────────────────
-// Konstanta: 8 jam kerja = 28800 detik
-define('WORK_SECONDS', 28800);
+$total_sampling   = count($waiting) + count($progress) + count($done);
+$total_processing = count($progress);
+$total_done       = count($done);
+$date_now         = date('d F Y');
 
-// Per hari per staff (untuk tabel & chart ratio harian)
-$ratio_daily_data = [];
-if ($selected_nik !== 'all') {
-    // Satu staff: ratio per hari
-    $nik_esc3 = mysqli_real_escape_string($conn, $selected_nik);
-    $ratioQ = mysqli_query($conn, "
-        SELECT
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
-        FROM sampling_process_steps sps
-        JOIN users u ON sps.qc_user_id = u.id
-        WHERE u.nik = '$nik_esc3'
-          AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
-          AND sps.end_time IS NOT NULL
-        GROUP BY DATE(sps.start_time)
-        ORDER BY tgl ASC
-    ");
-    while ($r = mysqli_fetch_assoc($ratioQ)) {
-        $r['ratio'] = min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1));
-        $ratio_daily_data[] = $r;
+function renderCards(array $rows, string $mode = 'waiting') {
+    $tz = new DateTimeZone('Asia/Jakarta');
+
+    if (empty($rows)) {
+        echo '<p class="empty-section">Belum ada data.</p>';
+        return;
     }
-} else {
-    // Semua staff: ratio per staff (rata-rata dari hari aktif)
-    $ratioAllQ = mysqli_query($conn, "
-        SELECT
-            u.id, u.nama, u.nik,
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
-        FROM sampling_process_steps sps
-        JOIN users u ON sps.qc_user_id = u.id
-        WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
-          AND sps.end_time IS NOT NULL
-          $whereNik
-        GROUP BY u.id, u.nama, u.nik, DATE(sps.start_time)
-        ORDER BY u.nama ASC, tgl ASC
-    ");
-    $ratio_by_staff = [];
-    while ($r = mysqli_fetch_assoc($ratioAllQ)) {
-        $uid = $r['id'];
-        if (!isset($ratio_by_staff[$uid])) {
-            $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
+
+    foreach ($rows as $row) {
+        $elapsed = 0;
+
+        if (!empty($row['start_time'])) {
+            $startDt = new DateTime($row['start_time'], $tz);
+            $nowDt   = new DateTime('now', $tz);
+            $elapsed = $nowDt->getTimestamp() - $startDt->getTimestamp();
+            if ($elapsed < 0) $elapsed = 0;
         }
-        $ratio_by_staff[$uid]['days'][] = [
-            'tgl'        => $r['tgl'],
-            'total_detik'=> $r['total_detik'],
-            'ratio'      => min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1)),
-        ];
-    }
-    // Hitung avg ratio per staff
-    foreach ($ratio_by_staff as $uid => &$s) {
-        $s['avg_ratio'] = count($s['days']) > 0
-            ? round(array_sum(array_column($s['days'], 'ratio')) / count($s['days']), 1)
-            : 0;
-    }
-    unset($s);
-    $ratio_daily_data = array_values($ratio_by_staff);
-}
-// ────────────────────────────────────────────────────────────────────────────
 
-$total_all_step  = array_sum(array_column($staff_data, 'total_step'));
-$total_all_order = array_sum(array_column($staff_data, 'total_order'));
-$top_staff       = !empty($staff_data) ? $staff_data[0]['nama'] : '-';
-$active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 0));
+        if ($mode === 'done') {
+            $progressValue = 100;
+        } elseif ($mode === 'progress' && !empty($row['start_time'])) {
+            $progressValue = min(100, floor(($elapsed / 3600) * 100));
+        } else {
+            $progressValue = 0;
+        }
+
+        $hours     = floor($elapsed / 3600);
+        $minutes   = floor(($elapsed % 3600) / 60);
+        $seconds   = $elapsed % 60;
+        $timerText = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+
+        if ($mode === 'progress' && !empty($row['start_time']) && $elapsed >= 3600) {
+            $progressValue = 100;
+            $timerText     = '01:00:00';
+        }
+        ?>
+        <div class="job-card">
+            <div class="job-card-code">
+                <?php echo htmlspecialchars($row['order_code']); ?>
+            </div>
+
+            <div class="job-card-name">
+                <?php echo htmlspecialchars($row['part_name']); ?>
+            </div>
+
+            <div class="job-card-partno">
+                <?php echo htmlspecialchars($row['part_no']); ?>
+            </div>
+
+            <div class="job-card-row">
+                <span>LINE</span>
+                <strong><?php echo htmlspecialchars($row['catalog_line']); ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>MACHINE/JIG</span>
+                <strong><?php echo htmlspecialchars($row['machine_jig_catalog']); ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>STATUS</span>
+                <strong><?php echo strtoupper(htmlspecialchars($row['status'])); ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>QC STAFF</span>
+                <strong><?php echo $row['qc_nama'] ? htmlspecialchars($row['qc_nama']) : '-'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>QC MACHINE</span>
+                <strong><?php echo $row['qc_machine'] ? htmlspecialchars($row['qc_machine']) : '-'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>CMM</span>
+                <strong><?php echo ((int)$row['cmm_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>RONDCOM</span>
+                <strong><?php echo ((int)$row['rondcom_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>ROUGHNESS</span>
+                <strong><?php echo ((int)$row['roughness_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>CONTOUR</span>
+                <strong><?php echo ((int)$row['contour_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>PROFIL PROJECTOR</span>
+                <strong><?php echo ((int)$row['profil_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>MANUAL</span>
+                <strong><?php echo ((int)$row['manual_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <div class="job-card-row">
+                <span>HARDNESS CHECK</span>
+                <strong><?php echo ((int)$row['hardness_check_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+            </div>
+
+            <?php if (!empty($row['start_time'])): ?>
+            <div class="job-card-row">
+                <span>START</span>
+                <strong><?php echo htmlspecialchars($row['start_time']); ?></strong>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($mode === 'progress' && !empty($row['start_time'])): ?>
+            <div class="job-card-row">
+                <span>TIMER</span>
+                <strong class="live-timer" data-start-time="<?php echo htmlspecialchars($row['start_time']); ?>">
+                    <?php echo $timerText; ?>
+                </strong>
+            </div>
+            <?php endif; ?>
+
+            <div class="job-progress-wrap">
+                <div class="job-progress-label">
+                    PROGRESS
+                    <span class="live-progress-text"
+                        <?php if ($mode === 'progress' && !empty($row['start_time'])): ?>
+                            data-start-time="<?php echo htmlspecialchars($row['start_time']); ?>"
+                        <?php endif; ?>>
+                        <?php echo $progressValue; ?>
+                    </span>%
+                </div>
+                <div class="job-progress-bar">
+                    <div class="job-progress-fill <?php echo ($progressValue <= 30 ? 'progress-low' : ($progressValue <= 70 ? 'progress-mid' : 'progress-high')); ?> live-progress-fill"
+                        <?php if ($mode === 'progress' && !empty($row['start_time'])): ?>
+                            data-start-time="<?php echo htmlspecialchars($row['start_time']); ?>"
+                        <?php endif; ?>
+                        style="width: <?php echo $progressValue; ?>%;"></div>
+                </div>
+            </div>
+
+            <?php if ($mode === 'waiting'): ?>
+                <button
+                    type="button"
+                    class="job-btn job-btn-process open-process-modal"
+                    data-order-id="<?php echo $row['id']; ?>"
+                    data-order-code="<?php echo htmlspecialchars($row['order_code']); ?>">
+                    PROCESS
+                </button>
+
+            <?php elseif ($mode === 'progress'): ?>
+                <?php if (!empty($row['start_time'])): ?>
+                <a href="finish_order.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-progress">
+                    SELESAIKAN STEP
+                </a>
+                <?php endif; ?>
+
+                <button
+                    type="button"
+                    class="job-btn job-btn-process open-process-modal"
+                    data-order-id="<?php echo $row['id']; ?>"
+                    data-order-code="<?php echo htmlspecialchars($row['order_code']); ?>"
+                    style="margin-top:8px;">
+                    LANJUTKAN MESIN
+                </button>
+
+                <a href="final_done.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-done" style="margin-top:8px;">
+                    FINAL DONE
+                </a>
+
+            <?php else: ?>
+                <div class="job-btn job-btn-done">DONE</div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manager Dashboard — QC Yanmar</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --red:       #CC0000;
-            --red-dark:  #A30000;
-            --red-soft:  #fff0f0;
-            --red-mid:   #ffd5d5;
-            --bg:        #f4f5f7;
-            --surface:   #ffffff;
-            --surface2:  #f9fafb;
-            --border:    rgba(0,0,0,0.07);
-            --text:      #111827;
-            --text2:     #6b7280;
-            --text3:     #9ca3af;
-            --green:     #059669;
-            --green-soft:#d1fae5;
-            --blue:      #1d4ed8;
-            --blue-soft: #dbeafe;
-            --sidebar-w: 220px;
-            --radius:    12px;
-            --radius-sm: 8px;
-            --shadow:    0 1px 4px rgba(0,0,0,0.07);
-            --shadow-md: 0 4px 20px rgba(0,0,0,0.09);
-        }
-
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: var(--sidebar-w);
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0; left: 0; bottom: 0;
-            z-index: 200;
-        }
-        .sidebar-logo {
-            padding: 24px 20px 20px;
-            border-bottom: 1px solid var(--border);
-        }
-        .sidebar-logo-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .logo-icon {
-            width: 32px; height: 32px;
-            background: var(--red);
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .logo-icon svg { width: 18px; height: 18px; fill: #fff; }
-        .logo-text {
-            display: flex; flex-direction: column;
-        }
-        .logo-name { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
-        .logo-sub  { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-
-        .sidebar-nav { padding: 16px 12px; flex: 1; }
-        .nav-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text3);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            padding: 0 8px;
-            margin-bottom: 8px;
-            margin-top: 16px;
-        }
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 9px 10px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text2);
-            text-decoration: none;
-            transition: background 0.12s, color 0.12s;
-            cursor: pointer;
-            margin-bottom: 2px;
-        }
-        .nav-item:hover { background: var(--surface2); color: var(--text); }
-        .nav-item.active { background: var(--red-soft); color: var(--red); }
-        .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
-        .nav-item.active svg { stroke: var(--red); }
-
-        .sidebar-footer {
-            padding: 16px 12px;
-            border-top: 1px solid var(--border);
-        }
-        .user-card {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px;
-            border-radius: var(--radius-sm);
-            background: var(--surface2);
-        }
-        .user-avatar {
-            width: 32px; height: 32px;
-            background: var(--red);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: 700; color: #fff;
-            flex-shrink: 0;
-        }
-        .user-info { flex: 1; min-width: 0; }
-        .user-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .user-role { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
-        .btn-logout-sm {
-            font-size: 10px;
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid var(--red-mid);
-            background: var(--red-soft);
-            color: var(--red);
-            text-decoration: none;
-            font-weight: 600;
-            white-space: nowrap;
-            transition: background 0.12s;
-        }
-        .btn-logout-sm:hover { background: var(--red-mid); }
-
-        /* MAIN */
-        .main {
-            margin-left: var(--sidebar-w);
-            flex: 1;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* TOPBAR */
-        .topbar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 0 28px;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0; z-index: 100;
-        }
-        .topbar-title { font-size: 15px; font-weight: 700; color: var(--text); }
-        .topbar-date  { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-
-        /* CONTENT */
-        .content { padding: 24px 28px; }
-
-        /* FILTER */
-        .filter-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 18px 22px;
-            margin-bottom: 22px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 14px;
-            align-items: flex-end;
-            box-shadow: var(--shadow);
-        }
-        .filter-group { display: flex; flex-direction: column; gap: 5px; }
-        .filter-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
-        .filter-input {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 13px;
-            padding: 7px 11px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            background: var(--surface2);
-            color: var(--text);
-            outline: none;
-            transition: border-color 0.15s;
-            min-width: 150px;
-        }
-        .filter-input:focus { border-color: var(--red); }
-        .btn-filter {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 20px;
-            border-radius: var(--radius-sm);
-            border: none;
-            background: var(--red);
-            color: #fff;
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-        .btn-filter:hover { background: var(--red-dark); }
-
-        /* SUMMARY */
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 14px;
-            margin-bottom: 22px;
-        }
-        .summary-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 18px 20px;
-            box-shadow: var(--shadow);
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.15s;
-        }
-        .summary-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .summary-card.accent {
-            background: var(--red);
-            border-color: var(--red-dark);
-        }
-        .summary-card.accent .summary-label { color: rgba(255,255,255,0.7); }
-        .summary-card.accent .summary-value { color: #fff; }
-        .summary-card.accent .summary-sub   { color: rgba(255,255,255,0.6); }
-        .summary-card-bar {
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--red);
-        }
-        .summary-card.accent .summary-card-bar { background: rgba(255,255,255,0.3); }
-        .summary-icon {
-            width: 36px; height: 36px;
-            border-radius: 9px;
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 14px;
-        }
-        .icon-red    { background: var(--red-soft); }
-        .icon-green  { background: var(--green-soft); }
-        .icon-blue   { background: var(--blue-soft); }
-        .icon-white  { background: rgba(255,255,255,0.2); }
-        .summary-icon svg { width: 18px; height: 18px; }
-        .summary-label { font-size: 11px; color: var(--text3); font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .summary-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 4px; }
-        .summary-sub   { font-size: 11px; color: var(--text3); }
-
-        /* SECTION TITLE */
-        .section-head {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .section-head-line {
-            width: 3px; height: 16px;
-            background: var(--red);
-            border-radius: 2px;
-        }
-        .section-head-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
-
-        /* STAFF GRID */
-        .staff-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-        .staff-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 16px 18px;
-            box-shadow: var(--shadow);
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .staff-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .staff-top {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-        .staff-avatar {
-            width: 36px; height: 36px;
-            border-radius: 50%;
-            background: var(--red);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 12px; font-weight: 700; color: #fff;
-            flex-shrink: 0;
-        }
-        .staff-avatar.zero { background: #e5e7eb; color: var(--text3); }
-        .staff-name { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
-        .staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .staff-divider { height: 1px; background: var(--border); margin: 10px 0; }
-        .staff-stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-bottom: 10px;
-        }
-        .stat-box {
-            background: var(--surface2);
-            border-radius: 7px;
-            padding: 7px 10px;
-            text-align: center;
-        }
-        .stat-box-val { font-size: 18px; font-weight: 700; color: var(--red); line-height: 1; }
-        .stat-box-val.zero { color: var(--text3); }
-        .stat-box-label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-        .staff-mesin-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-            padding: 2px 0;
-        }
-        .staff-mesin-label { color: var(--text2); }
-        .staff-mesin-val   { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: var(--text); }
-        .staff-mesin-val.has { color: var(--red); }
-
-        /* CHART */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 22px;
-        }
-        .chart-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-        }
-        .chart-card.full { grid-column: 1 / -1; }
-        .chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 18px; }
-
-        /* TABLE */
-        .table-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            margin-bottom: 28px;
-        }
-        .table-head-bar {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .dash-table th {
-            padding: 9px 14px;
-            text-align: left;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text3);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            background: var(--surface2);
-            border-bottom: 1px solid var(--border);
-        }
-        .dash-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
-        .dash-table tr:last-child td { border-bottom: none; }
-        .dash-table tr:hover td { background: #fafafa; }
-        .pill {
-            display: inline-block;
-            padding: 2px 9px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .pill-red   { background: var(--red-soft);   color: var(--red); }
-        .pill-green { background: var(--green-soft);  color: var(--green); }
-        .pill-gray  { background: #f3f4f6; color: var(--text3); }
-        .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-
-        /* OPERATION RATIO */
-        .ratio-section { margin-bottom: 28px; }
-        .ratio-table-wrap { overflow-x: auto; }
-        .ratio-bar-wrap {
-            display: flex; align-items: center; gap: 8px; min-width: 120px;
-        }
-        .ratio-bar-bg {
-            flex: 1; height: 8px; background: #f3f4f6;
-            border-radius: 99px; overflow: hidden; min-width: 60px;
-        }
-        .ratio-bar-fill {
-            height: 100%; border-radius: 99px;
-            transition: width 0.6s cubic-bezier(.4,0,.2,1);
-        }
-        .ratio-high  { background: var(--green); }
-        .ratio-mid   { background: #f59e0b; }
-        .ratio-low   { background: var(--red); }
-        .ratio-val {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px; font-weight: 600;
-            min-width: 38px; text-align: right;
-        }
-        .ratio-val.high { color: var(--green); }
-        .ratio-val.mid  { color: #f59e0b; }
-        .ratio-val.low  { color: var(--red); }
-        .ratio-badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 2px 8px; border-radius: 20px;
-            font-size: 10px; font-weight: 700;
-        }
-        .ratio-badge.high { background: var(--green-soft); color: var(--green); }
-        .ratio-badge.mid  { background: #fef3c7; color: #b45309; }
-        .ratio-badge.low  { background: var(--red-soft); color: var(--red); }
-        .ratio-staff-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 16px 18px;
-            box-shadow: var(--shadow);
-        }
-        .ratio-staff-header {
-            display: flex; align-items: center;
-            justify-content: space-between; margin-bottom: 12px;
-        }
-        .ratio-staff-name { font-size: 13px; font-weight: 700; color: var(--text); }
-        .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .ratio-day-row {
-            display: flex; align-items: center;
-            gap: 10px; padding: 5px 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 12px;
-        }
-        .ratio-day-row:last-child { border-bottom: none; }
-        .ratio-day-label {
-            min-width: 90px; color: var(--text2);
-            font-family: 'JetBrains Mono', monospace; font-size: 11px;
-        }
-        .ratio-grid-all {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 14px;
-        }
-    </style>
+    <title>Main Display QC</title>
+    <link rel="stylesheet" href="../assets/style.css?v=22">
 </head>
-<body>
-
-<!-- SIDEBAR -->
-<aside class="sidebar">
-    <div class="sidebar-logo">
-        <div class="sidebar-logo-badge">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <div class="logo-text">
-                <span class="logo-name">QC Display</span>
-                <span class="logo-sub">Yanmar · Manager</span>
-            </div>
+<body class="main-display-body">
+    <div class="main-display-topbar">
+        <div class="main-display-title">QC SAMPLING DISPLAY</div>
+        <div class="main-display-info">
+            Tanggal : <strong><?php echo $date_now; ?></strong> |
+            Total Sampling : <strong><?php echo $total_sampling; ?></strong> |
+            Processing : <strong><?php echo $total_processing; ?></strong> |
+            Done : <strong><?php echo $total_done; ?></strong>
         </div>
     </div>
 
-    <nav class="sidebar-nav">
-        <div class="nav-label">Menu</div>
-        <a class="nav-item active" href="#">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            Dashboard
-        </a>
-        <a class="nav-item" href="../qc/history.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-            History QC
-        </a>
-        <a class="nav-item" href="../menu.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-            Main Menu
-        </a>
-    </nav>
+    <div class="main-display-layout">
+        <aside class="main-display-sidebar">
+            <div class="sidebar-title">QC MENU</div>
+            <a href="../menu.php" class="sidebar-btn">BACK</a>
+            <a href="display.php" class="sidebar-btn">ORDER REQUEST</a>
+            <div class="sidebar-divider"></div>
+            <a href="main_display.php?section=job"      class="sidebar-btn <?php echo $section === 'job'      ? 'active' : ''; ?>">JOB ORDER</a>
+            <a href="main_display.php?section=progress" class="sidebar-btn <?php echo $section === 'progress' ? 'active' : ''; ?>">ON PROGRESS</a>
+            <a href="main_display.php?section=done"     class="sidebar-btn <?php echo $section === 'done'     ? 'active' : ''; ?>">DONE</a>
+            <a href="history.php" class="sidebar-btn">HISTORY</a>
+            <a href="../auth/logout.php" class="sidebar-btn sidebar-btn-danger">LOGOUT</a>
+        </aside>
 
-    <div class="sidebar-footer">
-                <div class="user-card">
-            <div class="user-avatar">
-                <?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?>
-            </div>
-            <div class="user-info">
-                <div class="user-name">
-                    <?php echo isset($_SESSION['nama']) ? htmlspecialchars($_SESSION['nama']) : 'Admin'; ?>
-                </div>
-                <div class="user-role">Manager</div>
-            </div>
-            <a href="../auth/logout.php" class="btn-logout-sm">Logout</a>
-        </div>
-    </div>
-</aside>
-
-<!-- MAIN -->
-<div class="main">
-    <div class="topbar">
-        <span class="topbar-title">Operating Ratio Dashboard</span>
-        <span class="topbar-date"><?php echo date('D, d M Y'); ?></span>
-    </div>
-
-    <div class="content">
-
-        <!-- Filter -->
-        <form method="GET" class="filter-card">
-            <div class="filter-group">
-                <label class="filter-label">Dari Tanggal</label>
-                <input type="date" name="date_from" value="<?php echo $date_from; ?>" class="filter-input">
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">Sampai Tanggal</label>
-                <input type="date" name="date_to" value="<?php echo $date_to; ?>" class="filter-input">
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">Staff QC</label>
-                <select name="nik" class="filter-input">
-                    <option value="all" <?php echo $selected_nik === 'all' ? 'selected' : ''; ?>>Semua Staff</option>
-                    <?php foreach ($staffList as $s): ?>
-                    <option value="<?php echo $s['nik']; ?>" <?php echo $selected_nik === $s['nik'] ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($s['nama']); ?> (<?php echo $s['nik']; ?>)
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <button type="submit" class="btn-filter">Tampilkan</button>
-        </form>
-
-        <!-- Summary -->
-        <div class="summary-grid">
-            <div class="summary-card accent">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-white">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-                </div>
-                <div class="summary-label">Total Step</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
-                <div class="summary-sub">Periode ini</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-green">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="<?php echo '#059669'; ?>" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                </div>
-                <div class="summary-label">Total Order</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
-                <div class="summary-sub">Selesai</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-blue">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                </div>
-                <div class="summary-label">Staff Aktif</div>
-                <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
-                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-red">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
-                </div>
-                <div class="summary-label">Top Performer</div>
-                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
-                <div class="summary-sub">Step terbanyak</div>
-            </div>
-        </div>
-
-        <!-- Staff Cards -->
-        <div class="section-head">
-            <div class="section-head-line"></div>
-            <div class="section-head-title">Detail per Staff</div>
-        </div>
-        <div class="staff-grid">
-            <?php foreach ($staff_data as $staff):
-                $initials = strtoupper(substr($staff['nama'], 0, 2));
-                $avg = (int)$staff['avg_duration'];
-                $m = floor($avg / 60); $s_dur = $avg % 60;
-                $isZero = $staff['total_step'] == 0;
-            ?>
-            <div class="staff-card">
-                <div class="staff-top">
-                    <div class="staff-avatar <?php echo $isZero ? 'zero' : ''; ?>"><?php echo $initials; ?></div>
-                    <div>
-                        <div class="staff-name"><?php echo htmlspecialchars($staff['nama']); ?></div>
-                        <div class="staff-nik"><?php echo $staff['nik']; ?></div>
-                    </div>
-                </div>
-                <div class="staff-stats">
-                    <div class="stat-box">
-                        <div class="stat-box-val <?php echo $staff['total_order'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_order']; ?></div>
-                        <div class="stat-box-label">Order</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-box-val <?php echo $staff['total_step'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_step']; ?></div>
-                        <div class="stat-box-label">Step</div>
-                    </div>
-                </div>
-                <div class="staff-divider"></div>
-                <?php
-                $mesin_list = [
-                    'CMM' => $staff['cmm_count'],
-                    'RONDCOM' => $staff['rondcom_count'],
-                    'ROUGHNESS' => $staff['roughness_count'],
-                    'CONTOUR' => $staff['contour_count'],
-                    'PROFIL PROJ.' => $staff['profil_count'],
-                    'MANUAL' => $staff['manual_count'],
-                    'HARDNESS' => $staff['hardness_count'],
-                ];
-                foreach ($mesin_list as $ml => $mv): ?>
-                <div class="staff-mesin-row">
-                    <span class="staff-mesin-label"><?php echo $ml; ?></span>
-                    <span class="staff-mesin-val <?php echo $mv > 0 ? 'has' : ''; ?>"><?php echo $mv; ?></span>
-                </div>
-                <?php endforeach; ?>
-                <div class="staff-divider"></div>
-                <div class="staff-mesin-row">
-                    <span class="staff-mesin-label">Avg Durasi</span>
-                    <span class="staff-mesin-val mono"><?php echo "{$m}m {$s_dur}s"; ?></span>
-                </div>
-            </div>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Charts -->
-        <?php if ($selected_nik === 'all'): ?>
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title">Total Step per Staff</div>
-                <canvas id="chartStep" height="120"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title">Total Order per Staff</div>
-                <canvas id="chartOrder" height="120"></canvas>
-            </div>
-        </div>
-        <?php else: ?>
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title">Step per Mesin — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
-                <canvas id="chartMesin" height="120"></canvas>
-            </div>
-            <div class="chart-card full">
-                <div class="chart-title">Aktivitas Harian — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
-                <canvas id="chartHarian" height="80"></canvas>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Table -->
-        <div class="table-card">
-            <div class="table-head-bar">
-                <div class="section-head-line"></div>
-                <div class="section-head-title" style="margin:0;">Ringkasan Tabel</div>
-            </div>
-            <table class="dash-table">
-                <thead>
-                    <tr>
-                        <th>Nama</th>
-                        <th>NIK</th>
-                        <th>Total Order</th>
-                        <th>Total Step</th>
-                        <th>Avg Durasi</th>
-                        <th>CMM</th>
-                        <th>RONDCOM</th>
-                        <th>ROUGHNESS</th>
-                        <th>CONTOUR</th>
-                        <th>PROFIL</th>
-                        <th>MANUAL</th>
-                        <th>HARDNESS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($staff_data as $staff):
-                        $avg = (int)$staff['avg_duration'];
-                        $m = floor($avg / 60); $s_dur = $avg % 60;
-                    ?>
-                    <tr>
-                        <td><strong><?php echo htmlspecialchars($staff['nama']); ?></strong></td>
-                        <td class="mono"><?php echo $staff['nik']; ?></td>
-                        <td><span class="pill <?php echo $staff['total_order'] > 0 ? 'pill-green' : 'pill-gray'; ?>"><?php echo $staff['total_order']; ?></span></td>
-                        <td><span class="pill <?php echo $staff['total_step'] > 0 ? 'pill-red' : 'pill-gray'; ?>"><?php echo $staff['total_step']; ?></span></td>
-                        <td class="mono"><?php echo "{$m}m {$s_dur}s"; ?></td>
-                        <td class="mono"><?php echo $staff['cmm_count']; ?></td>
-                        <td class="mono"><?php echo $staff['rondcom_count']; ?></td>
-                        <td class="mono"><?php echo $staff['roughness_count']; ?></td>
-                        <td class="mono"><?php echo $staff['contour_count']; ?></td>
-                        <td class="mono"><?php echo $staff['profil_count']; ?></td>
-                        <td class="mono"><?php echo $staff['manual_count']; ?></td>
-                        <td class="mono"><?php echo $staff['hardness_count']; ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- ── OPERATION RATIO SECTION ─────────────────────────────── -->
-        <div class="ratio-section">
-            <div class="section-head">
-                <div class="section-head-line"></div>
-                <div class="section-head-title">Operation Ratio</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;">Basis 8 jam kerja/hari &nbsp;|&nbsp;
-                    <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
-                    <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
-                    <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
-                </span>
-            </div>
-
-            <?php
-            function ratioClass(float $r): string {
-                if ($r >= 80) return 'high';
-                if ($r >= 50) return 'mid';
-                return 'low';
-            }
-            function ratioLabel(float $r): string {
-                if ($r >= 80) return '🟢 Produktif';
-                if ($r >= 50) return '🟡 Normal';
-                return '🔴 Perhatian';
-            }
-            ?>
-
-            <?php if ($selected_nik !== 'all'): ?>
-                <!-- Satu staff: tabel per hari -->
-                <?php if (empty($ratio_daily_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
-                <?php else: ?>
-                <div class="table-card ratio-table-wrap">
-                    <div class="table-head-bar">
-                        <div class="section-head-line"></div>
-                        <div class="section-head-title" style="margin:0;">
-                            <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?> — Ratio per Hari
-                        </div>
-                    </div>
-                    <table class="dash-table">
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Waktu Aktif</th>
-                                <th style="min-width:200px;">Operation Ratio</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($ratio_daily_data as $rd):
-                                $cls   = ratioClass($rd['ratio']);
-                                $jam   = floor($rd['total_detik'] / 3600);
-                                $mnt   = floor(($rd['total_detik'] % 3600) / 60);
-                            ?>
-                            <tr>
-                                <td class="mono"><?php echo $rd['tgl']; ?></td>
-                                <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
-                                <td>
-                                    <div class="ratio-bar-wrap">
-                                        <div class="ratio-bar-bg">
-                                            <div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div>
-                                        </div>
-                                        <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
-                                    </div>
-                                </td>
-                                <td><span class="ratio-badge <?php echo $cls; ?>"><?php echo ratioLabel($rd['ratio']); ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php endif; ?>
-
-            <?php else: ?>
-                <!-- Semua staff: kartu per staff dengan avg ratio + breakdown hari -->
-                <?php if (empty($ratio_daily_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
-                <?php else: ?>
-                <div class="ratio-grid-all">
-                    <?php foreach ($ratio_daily_data as $rs):
-                        $avg_cls = ratioClass($rs['avg_ratio']);
-                    ?>
-                    <div class="ratio-staff-card">
-                        <div class="ratio-staff-header">
-                            <div>
-                                <div class="ratio-staff-name"><?php echo htmlspecialchars($rs['nama']); ?></div>
-                                <div class="ratio-staff-nik"><?php echo $rs['nik']; ?></div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);">
-                                    <?php echo $rs['avg_ratio']; ?>%
-                                </div>
-                                <div style="font-size:10px;color:var(--text3);">avg ratio</div>
-                            </div>
-                        </div>
-                        <div class="ratio-bar-wrap" style="margin-bottom:12px;">
-                            <div class="ratio-bar-bg" style="height:10px;">
-                                <div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div>
-                            </div>
-                        </div>
-                        <?php foreach ($rs['days'] as $d):
-                            $dcls = ratioClass($d['ratio']);
-                            $djam = floor($d['total_detik'] / 3600);
-                            $dmnt = floor(($d['total_detik'] % 3600) / 60);
-                        ?>
-                        <div class="ratio-day-row">
-                            <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
-                            <div class="ratio-bar-wrap" style="flex:1;">
-                                <div class="ratio-bar-bg">
-                                    <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
-                                </div>
-                                <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
-                            </div>
-                            <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
+        <main class="main-display-content">
+            <?php if (isset($_GET['error_qc'])): ?>
+                <p class="error">NIK atau password QC salah.</p>
             <?php endif; ?>
-        </div>
-        <!-- ── END OPERATION RATIO ──────────────────────────────────── -->
+            <?php if (isset($_GET['error_machine'])): ?>
+                <p class="error">Mesin QC tidak valid.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['error_order'])): ?>
+                <p class="error">Order tidak ditemukan.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['insert_error'])): ?>
+                <p class="error">Gagal memulai proses order.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['process_success'])): ?>
+                <p class="success">Step mesin berhasil dimulai.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['finish_success'])): ?>
+                <p class="success">Step mesin berhasil diselesaikan.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['final_done'])): ?>
+                <p class="success">Order berhasil ditutup sebagai DONE.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['machine_done'])): ?>
+                <p class="error">Mesin itu sudah selesai untuk order ini.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['already_progress'])): ?>
+                <p class="error">Mesin itu sedang dikerjakan untuk order ini.</p>
+            <?php endif; ?>
 
+            <?php if ($section === 'job'): ?>
+                <section class="display-section">
+                    <div class="section-header section-header-waiting">JOB ORDER</div>
+                    <div class="job-grid">
+                        <?php renderCards($waiting, 'waiting'); ?>
+                    </div>
+                </section>
+            <?php elseif ($section === 'progress'): ?>
+                <section class="display-section">
+                    <div class="section-header section-header-progress">ON PROGRESS</div>
+                    <div class="job-grid">
+                        <?php renderCards($progress, 'progress'); ?>
+                    </div>
+                </section>
+            <?php elseif ($section === 'done'): ?>
+                <section class="display-section">
+                    <div class="section-header section-header-done">DONE</div>
+                    <div class="job-grid">
+                        <?php renderCards($done, 'done'); ?>
+                    </div>
+                </section>
+            <?php endif; ?>
+        </main>
     </div>
-</div>
 
-<script>
-document.querySelectorAll('.counter').forEach(el => {
-    const target = parseInt(el.dataset.target);
-    if (target === 0) { el.textContent = '0'; return; }
-    let current = 0;
-    const step = Math.ceil(target / 40);
-    const timer = setInterval(() => {
-        current = Math.min(current + step, target);
-        el.textContent = current;
-        if (current >= target) clearInterval(timer);
-    }, 20);
-});
+    <!-- Modal -->
+    <div id="processModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Verifikasi QC Staff</h3>
+            <p id="modalOrderText">Order: -</p>
 
-const chartOpts = {
-    responsive: true,
-    plugins: { legend: { display: false } },
-    scales: {
-        y: { beginAtZero: true, ticks: { stepSize: 1, color: '#9ca3af', font: { family: 'Plus Jakarta Sans', size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
-        x: { ticks: { color: '#6b7280', font: { family: 'Plus Jakarta Sans', size: 11 } }, grid: { display: false } }
-    }
-};
+            <form action="process_order.php" method="POST">
+                <input type="hidden" name="order_id" id="modal_order_id">
 
-<?php if ($selected_nik === 'all'): ?>
-const staffNames  = <?php echo json_encode(array_column($staff_data, 'nama')); ?>;
-const totalSteps  = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_step'))); ?>;
-const totalOrders = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_order'))); ?>;
+                <label>NIK QC</label>
+                <input type="text" name="nik" required>
 
-new Chart(document.getElementById('chartStep'), {
-    type: 'bar',
-    data: { labels: staffNames, datasets: [{ data: totalSteps, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
-    options: chartOpts
-});
-new Chart(document.getElementById('chartOrder'), {
-    type: 'bar',
-    data: { labels: staffNames, datasets: [{ data: totalOrders, backgroundColor: 'rgba(5,150,105,0.7)', borderColor: '#059669', borderWidth: 1, borderRadius: 5 }] },
-    options: chartOpts
-});
+                <label>Password</label>
+                <input type="password" name="password" required>
 
-<?php else: ?>
-const mesinLabels = ['CMM','RONDCOM','ROUGHNESS','CONTOUR','PROFIL PROJ.','MANUAL','HARDNESS'];
-const mesinData   = [
-    <?php echo (int)($staff_data[0]['cmm_count']      ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['rondcom_count']   ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['roughness_count'] ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['contour_count']   ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['profil_count']    ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['manual_count']    ?? 0); ?>,
-    <?php echo (int)($staff_data[0]['hardness_count']  ?? 0); ?>
-];
-new Chart(document.getElementById('chartMesin'), {
-    type: 'bar',
-    data: { labels: mesinLabels, datasets: [{ data: mesinData, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
-    options: chartOpts
-});
+                <label>Pilih Mesin QC</label>
+                <select name="qc_machine" required>
+                    <option value="">-- Pilih Mesin QC --</option>
+                    <option value="CMM">CMM</option>
+                    <option value="RONDCOM">RONDCOM</option>
+                    <option value="ROUGHNESS">ROUGHNESS</option>
+                    <option value="CONTOUR">CONTOUR</option>
+                    <option value="PROFIL PROJECTOR">PROFIL PROJECTOR</option>
+                    <option value="MANUAL">MANUAL</option>
+                    <option value="HARDNESS CHECK">HARDNESS CHECK</option>
+                </select>
 
-const hariLabels = <?php echo json_encode(array_column($daily_data, 'tgl')); ?>;
-const hariSteps  = <?php echo json_encode(array_map('intval', array_column($daily_data, 'total_step'))); ?>;
-const hariOrders = <?php echo json_encode(array_map('intval', array_column($daily_data, 'total_order'))); ?>;
-new Chart(document.getElementById('chartHarian'), {
-    type: 'line',
-    data: {
-        labels: hariLabels,
-        datasets: [
-            { label: 'Total Step',  data: hariSteps,  borderColor: '#CC0000', backgroundColor: 'rgba(204,0,0,0.07)', tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: '#CC0000' },
-            { label: 'Total Order', data: hariOrders, borderColor: '#059669', backgroundColor: 'rgba(5,150,105,0.07)', tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: '#059669' }
-        ]
-    },
-    options: { ...chartOpts, plugins: { legend: { display: true, labels: { color: '#6b7280', font: { family: 'Plus Jakarta Sans', size: 12 } } } } }
-});
-<?php endif; ?>
-</script>
+                <div class="modal-actions">
+                    <button type="submit" class="btn">Lanjut Process</button>
+                    <button type="button" class="btn btn-danger" id="closeModal">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const modal         = document.getElementById('processModal');
+        const modalOrderId  = document.getElementById('modal_order_id');
+        const modalOrderText= document.getElementById('modalOrderText');
+        const closeModalBtn = document.getElementById('closeModal');
+        const openButtons   = document.querySelectorAll('.open-process-modal');
+
+        openButtons.forEach(btn => {
+            btn.addEventListener('click', function () {
+                modalOrderId.value        = this.getAttribute('data-order-id');
+                modalOrderText.textContent = 'Order: ' + this.getAttribute('data-order-code');
+                modal.style.display       = 'flex';
+            });
+        });
+
+        closeModalBtn.addEventListener('click', () => modal.style.display = 'none');
+        window.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+
+        function formatTime(s) {
+            return String(Math.floor(s/3600)).padStart(2,'0') + ':' +
+                   String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
+                   String(s%60).padStart(2,'0');
+        }
+
+        function updateLiveProgress() {
+            const now = new Date();
+
+            document.querySelectorAll('.live-timer').forEach(el => {
+                const start = new Date(el.dataset.startTime.replace(' ', 'T'));
+                let elapsed = Math.floor((now - start) / 1000);
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > 3600) elapsed = 3600;
+                el.textContent = formatTime(elapsed);
+            });
+
+            document.querySelectorAll('.live-progress-text').forEach(el => {
+                if (!el.dataset.startTime) return;
+                const start = new Date(el.dataset.startTime.replace(' ', 'T'));
+                let elapsed = Math.floor((now - start) / 1000);
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > 3600) elapsed = 3600;
+                el.textContent = Math.floor((elapsed / 3600) * 100);
+            });
+
+            document.querySelectorAll('.live-progress-fill').forEach(el => {
+                if (!el.dataset.startTime) return;
+                const start = new Date(el.dataset.startTime.replace(' ', 'T'));
+                let elapsed = Math.floor((now - start) / 1000);
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > 3600) elapsed = 3600;
+                const progress = Math.floor((elapsed / 3600) * 100);
+                el.style.width = progress + '%';
+                el.classList.remove('progress-low', 'progress-mid', 'progress-high');
+                el.classList.add(progress <= 30 ? 'progress-low' : progress <= 70 ? 'progress-mid' : 'progress-high');
+            });
+        }
+
+        updateLiveProgress();
+        setInterval(updateLiveProgress, 1000);
+        setInterval(() => { if (modal.style.display !== 'flex') window.location.reload(); }, 60000);
+    </script>
 </body>
 </html>

@@ -15,7 +15,7 @@ $nik_esc = mysqli_real_escape_string($conn, $nik);
 $query   = mysqli_query($conn, "SELECT * FROM users WHERE nik='$nik_esc' AND status=1 LIMIT 1");
 $user    = mysqli_fetch_assoc($query);
 
-if ($user && $password === $user['password']) {
+if ($user && password_verify($password, $user['password'])) {
     session_regenerate_id(true);
     $_SESSION['id']   = $user['id'];
     $_SESSION['nik']  = $user['nik'];
