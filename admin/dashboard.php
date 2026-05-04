@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
@@ -64,6 +65,71 @@ if ($selected_nik !== 'all') {
     ");
     while ($d = mysqli_fetch_assoc($dailyQuery)) $daily_data[] = $d;
 }
+
+// ── Operation Ratio Queries ──────────────────────────────────────────────────
+// Konstanta: 8 jam kerja = 28800 detik
+define('WORK_SECONDS', 28800);
+
+// Per hari per staff (untuk tabel & chart ratio harian)
+$ratio_daily_data = [];
+if ($selected_nik !== 'all') {
+    // Satu staff: ratio per hari
+    $nik_esc3 = mysqli_real_escape_string($conn, $selected_nik);
+    $ratioQ = mysqli_query($conn, "
+        SELECT
+            DATE(sps.start_time) AS tgl,
+            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+        FROM sampling_process_steps sps
+        JOIN users u ON sps.qc_user_id = u.id
+        WHERE u.nik = '$nik_esc3'
+          AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+          AND sps.status = 'done'
+          AND sps.end_time IS NOT NULL
+        GROUP BY DATE(sps.start_time)
+        ORDER BY tgl ASC
+    ");
+    while ($r = mysqli_fetch_assoc($ratioQ)) {
+        $r['ratio'] = min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1));
+        $ratio_daily_data[] = $r;
+    }
+} else {
+    // Semua staff: ratio per staff (rata-rata dari hari aktif)
+    $ratioAllQ = mysqli_query($conn, "
+        SELECT
+            u.id, u.nama, u.nik,
+            DATE(sps.start_time) AS tgl,
+            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+        FROM sampling_process_steps sps
+        JOIN users u ON sps.qc_user_id = u.id
+        WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+          AND sps.status = 'done'
+          AND sps.end_time IS NOT NULL
+          $whereNik
+        GROUP BY u.id, u.nama, u.nik, DATE(sps.start_time)
+        ORDER BY u.nama ASC, tgl ASC
+    ");
+    $ratio_by_staff = [];
+    while ($r = mysqli_fetch_assoc($ratioAllQ)) {
+        $uid = $r['id'];
+        if (!isset($ratio_by_staff[$uid])) {
+            $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
+        }
+        $ratio_by_staff[$uid]['days'][] = [
+            'tgl'        => $r['tgl'],
+            'total_detik'=> $r['total_detik'],
+            'ratio'      => min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1)),
+        ];
+    }
+    // Hitung avg ratio per staff
+    foreach ($ratio_by_staff as $uid => &$s) {
+        $s['avg_ratio'] = count($s['days']) > 0
+            ? round(array_sum(array_column($s['days'], 'ratio')) / count($s['days']), 1)
+            : 0;
+    }
+    unset($s);
+    $ratio_daily_data = array_values($ratio_by_staff);
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 $total_all_step  = array_sum(array_column($staff_data, 'total_step'));
 $total_all_order = array_sum(array_column($staff_data, 'total_order'));
@@ -461,6 +527,69 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         .pill-green { background: var(--green-soft);  color: var(--green); }
         .pill-gray  { background: #f3f4f6; color: var(--text3); }
         .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+        /* OPERATION RATIO */
+        .ratio-section { margin-bottom: 28px; }
+        .ratio-table-wrap { overflow-x: auto; }
+        .ratio-bar-wrap {
+            display: flex; align-items: center; gap: 8px; min-width: 120px;
+        }
+        .ratio-bar-bg {
+            flex: 1; height: 8px; background: #f3f4f6;
+            border-radius: 99px; overflow: hidden; min-width: 60px;
+        }
+        .ratio-bar-fill {
+            height: 100%; border-radius: 99px;
+            transition: width 0.6s cubic-bezier(.4,0,.2,1);
+        }
+        .ratio-high  { background: var(--green); }
+        .ratio-mid   { background: #f59e0b; }
+        .ratio-low   { background: var(--red); }
+        .ratio-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px; font-weight: 600;
+            min-width: 38px; text-align: right;
+        }
+        .ratio-val.high { color: var(--green); }
+        .ratio-val.mid  { color: #f59e0b; }
+        .ratio-val.low  { color: var(--red); }
+        .ratio-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 20px;
+            font-size: 10px; font-weight: 700;
+        }
+        .ratio-badge.high { background: var(--green-soft); color: var(--green); }
+        .ratio-badge.mid  { background: #fef3c7; color: #b45309; }
+        .ratio-badge.low  { background: var(--red-soft); color: var(--red); }
+        .ratio-staff-card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 16px 18px;
+            box-shadow: var(--shadow);
+        }
+        .ratio-staff-header {
+            display: flex; align-items: center;
+            justify-content: space-between; margin-bottom: 12px;
+        }
+        .ratio-staff-name { font-size: 13px; font-weight: 700; color: var(--text); }
+        .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+        .ratio-day-row {
+            display: flex; align-items: center;
+            gap: 10px; padding: 5px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+        .ratio-day-row:last-child { border-bottom: none; }
+        .ratio-day-label {
+            min-width: 90px; color: var(--text2);
+            font-family: 'JetBrains Mono', monospace; font-size: 11px;
+        }
+        .ratio-grid-all {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
     </style>
 </head>
 <body>
@@ -711,6 +840,128 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 </tbody>
             </table>
         </div>
+
+        <!-- ── OPERATION RATIO SECTION ─────────────────────────────── -->
+        <div class="ratio-section">
+            <div class="section-head">
+                <div class="section-head-line"></div>
+                <div class="section-head-title">Operation Ratio</div>
+                <span style="font-size:11px;color:var(--text3);margin-left:8px;">Basis 8 jam kerja/hari &nbsp;|&nbsp;
+                    <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
+                    <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
+                    <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
+                </span>
+            </div>
+
+            <?php
+            function ratioClass(float $r): string {
+                if ($r >= 80) return 'high';
+                if ($r >= 50) return 'mid';
+                return 'low';
+            }
+            function ratioLabel(float $r): string {
+                if ($r >= 80) return '🟢 Produktif';
+                if ($r >= 50) return '🟡 Normal';
+                return '🔴 Perhatian';
+            }
+            ?>
+
+            <?php if ($selected_nik !== 'all'): ?>
+                <!-- Satu staff: tabel per hari -->
+                <?php if (empty($ratio_daily_data)): ?>
+                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
+                <?php else: ?>
+                <div class="table-card ratio-table-wrap">
+                    <div class="table-head-bar">
+                        <div class="section-head-line"></div>
+                        <div class="section-head-title" style="margin:0;">
+                            <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?> — Ratio per Hari
+                        </div>
+                    </div>
+                    <table class="dash-table">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Waktu Aktif</th>
+                                <th style="min-width:200px;">Operation Ratio</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($ratio_daily_data as $rd):
+                                $cls   = ratioClass($rd['ratio']);
+                                $jam   = floor($rd['total_detik'] / 3600);
+                                $mnt   = floor(($rd['total_detik'] % 3600) / 60);
+                            ?>
+                            <tr>
+                                <td class="mono"><?php echo $rd['tgl']; ?></td>
+                                <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
+                                <td>
+                                    <div class="ratio-bar-wrap">
+                                        <div class="ratio-bar-bg">
+                                            <div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div>
+                                        </div>
+                                        <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
+                                    </div>
+                                </td>
+                                <td><span class="ratio-badge <?php echo $cls; ?>"><?php echo ratioLabel($rd['ratio']); ?></span></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+
+            <?php else: ?>
+                <!-- Semua staff: kartu per staff dengan avg ratio + breakdown hari -->
+                <?php if (empty($ratio_daily_data)): ?>
+                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
+                <?php else: ?>
+                <div class="ratio-grid-all">
+                    <?php foreach ($ratio_daily_data as $rs):
+                        $avg_cls = ratioClass($rs['avg_ratio']);
+                    ?>
+                    <div class="ratio-staff-card">
+                        <div class="ratio-staff-header">
+                            <div>
+                                <div class="ratio-staff-name"><?php echo htmlspecialchars($rs['nama']); ?></div>
+                                <div class="ratio-staff-nik"><?php echo $rs['nik']; ?></div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);">
+                                    <?php echo $rs['avg_ratio']; ?>%
+                                </div>
+                                <div style="font-size:10px;color:var(--text3);">avg ratio</div>
+                            </div>
+                        </div>
+                        <div class="ratio-bar-wrap" style="margin-bottom:12px;">
+                            <div class="ratio-bar-bg" style="height:10px;">
+                                <div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div>
+                            </div>
+                        </div>
+                        <?php foreach ($rs['days'] as $d):
+                            $dcls = ratioClass($d['ratio']);
+                            $djam = floor($d['total_detik'] / 3600);
+                            $dmnt = floor(($d['total_detik'] % 3600) / 60);
+                        ?>
+                        <div class="ratio-day-row">
+                            <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
+                            <div class="ratio-bar-wrap" style="flex:1;">
+                                <div class="ratio-bar-bg">
+                                    <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
+                                </div>
+                                <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
+                            </div>
+                            <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
+        <!-- ── END OPERATION RATIO ──────────────────────────────────── -->
 
     </div>
 </div>

@@ -1,34 +1,37 @@
 <?php
 session_start();
+include '../config/koneksi.php';
+/** @var mysqli $conn */
 
-if (isset($_SESSION['id']) && $_SESSION['role'] === 'admin') {
-    header("Location: ../admin/dashboard.php");
+$nik      = trim($_POST['nik']      ?? '');
+$password = trim($_POST['password'] ?? '');
+
+if (empty($nik) || empty($password)) {
+    header("Location: login_manager.php?error=1");
     exit;
 }
+
+$nik_esc = mysqli_real_escape_string($conn, $nik);
+
+$query = mysqli_query($conn, "SELECT * FROM users WHERE nik='$nik_esc' AND role='admin' AND status=1 LIMIT 1");
+$user  = mysqli_fetch_assoc($query);
+
+if (!$user) {
+    header("Location: login_manager.php?error=1");
+    exit;
+}
+
+if (!password_verify($password, $user['password'])) {
+    header("Location: login_manager.php?error=1");
+    exit;
+}
+
+session_regenerate_id(true);
+$_SESSION['id']   = $user['id'];
+$_SESSION['nik']  = $user['nik'];
+$_SESSION['nama'] = $user['nama'];
+$_SESSION['role'] = $user['role'];
+
+header("Location: ../admin/dashboard.php");
+exit;
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Manager</title>
-    <link rel="stylesheet" href="../assets/style.css">
-</head>
-<body class="login-page">
-    <div class="login-wrapper">
-        <div class="login-card">
-            <h1>MANAGER LOGIN</h1>
-
-            <?php if (isset($_GET['error'])): ?>
-                <p class="error">NIK atau password salah / bukan admin.</p>
-            <?php endif; ?>
-
-            <form action="proses_login_manager.php" method="POST">
-                <input type="text" name="nik" placeholder="NIK / Username" required>
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">SIGN IN</button>
-            </form>
-        </div>
-    </div>
-</body>
-</html>
