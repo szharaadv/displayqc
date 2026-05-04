@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id'])) {
@@ -36,7 +37,6 @@ $userQuery = mysqli_query($conn, "
     SELECT *
     FROM users
     WHERE nik = $nik
-      AND password = '$password'
       AND role = 'qc'
       AND status = 1
     LIMIT 1
@@ -47,7 +47,13 @@ if (!$userQuery || mysqli_num_rows($userQuery) === 0) {
     exit;
 }
 
-$user       = mysqli_fetch_assoc($userQuery);
+$user = mysqli_fetch_assoc($userQuery);
+
+if (!password_verify($password, $user['password'])) {
+    header("Location: main_display.php?section=job&error_qc=1");
+    exit;
+}
+
 $qc_user_id = (int) $user['id'];
 
 $orderQuery = mysqli_query($conn, "

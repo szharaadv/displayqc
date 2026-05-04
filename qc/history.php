@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id'])) {

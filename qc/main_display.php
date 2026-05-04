@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */  // ← tambah ini
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id'])) {
@@ -69,7 +70,9 @@ $query = mysqli_query($conn, "
     JOIN master_lines ml ON so.line_id = ml.id
     JOIN master_machines mm ON so.machine_id = mm.id
     LEFT JOIN sampling_process_steps sps ON sps.order_id = so.id
-    WHERE DATE(so.created_at) = '$today'
+    WHERE (
+    DATE(so.created_at) = '$today'
+    OR (so.status IN ('waiting', 'in_progress', 'partial_done') AND DATE(so.created_at) < '$today'))
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
@@ -95,7 +98,7 @@ $total_processing = count($progress);
 $total_done = count($done);
 $date_now = date('d F Y');
 
-function renderCards($rows, $mode = 'waiting') {
+function renderCards(array $rows, string $mode = 'waiting') {
     global $conn;
 
     if (empty($rows)) {
@@ -132,36 +135,10 @@ function renderCards($rows, $mode = 'waiting') {
         $timerText = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
 
         if ($mode === 'progress' && !empty($row['start_time']) && $elapsed >= 3600) {
-            $orderId = (int)$row['id'];
+    $progressValue = 100;
+    $timerText = '01:00:00';
+}
 
-            $stepQuery = mysqli_query($conn, "
-                SELECT * FROM sampling_process_steps
-                WHERE order_id = '$orderId' AND status = 'in_progress'
-                ORDER BY id DESC
-                LIMIT 1
-            ");
-
-            if ($stepQuery && mysqli_num_rows($stepQuery) > 0) {
-                $step = mysqli_fetch_assoc($stepQuery);
-                $step_id = (int)$step['id'];
-
-                mysqli_query($conn, "
-                    UPDATE sampling_process_steps
-                    SET status = 'done',
-                        end_time = NOW()
-                    WHERE id = '$step_id'
-                ");
-
-                mysqli_query($conn, "
-                    UPDATE sampling_orders
-                    SET status = 'partial_done'
-                    WHERE id = '$orderId'
-                ");
-            }
-
-            $progressValue = 100;
-            $timerText = '01:00:00';
-        }
         ?>
         <div class="job-card">
             <div class="job-card-code">
