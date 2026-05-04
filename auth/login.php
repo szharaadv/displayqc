@@ -1,11 +1,17 @@
 <?php
 session_start();
 
-if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: ../auth/login.php");
+// Kalau sudah login, redirect ke menu
+if (isset($_SESSION['id'])) {
+    if ($_SESSION['role'] === 'admin') {
+        header("Location: ../admin/dashboard.php");
+    } else {
+        header("Location: ../menu.php");
+    }
     exit;
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
