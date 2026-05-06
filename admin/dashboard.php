@@ -11,8 +11,8 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$date_from    = isset($_GET['date_from']) && $_GET['date_from'] !== '' ? $_GET['date_from'] : date('Y-m-d');
-$date_to      = isset($_GET['date_to'])   && $_GET['date_to']   !== '' ? $_GET['date_to']   : date('Y-m-d');
+$date_from    = date('Y-m-d');
+$date_to      = date('Y-m-d');
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
 $staffList = [];
@@ -611,9 +611,13 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
 
     <nav class="sidebar-nav">
         <div class="nav-label">Menu</div>
-        <a class="nav-item active" href="#">
+        <a class="nav-item active" href="dashboard.php">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
             Dashboard
+        </a>
+        <a class="nav-item" href="evaluation.php">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            Evaluation
         </a>
         <a class="nav-item" href="../qc/history.php">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
@@ -645,21 +649,13 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
 <div class="main">
     <div class="topbar">
         <span class="topbar-title">Operating Ratio Dashboard</span>
-        <span class="topbar-date"><?php echo date('D, d M Y'); ?></span>
+        <span class="topbar-date" style="font-size:15px;font-weight:700;color:var(--text);"><?php echo date('l, d F Y'); ?></span>
     </div>
 
     <div class="content">
 
         <!-- Filter -->
         <form method="GET" class="filter-card">
-            <div class="filter-group">
-                <label class="filter-label">Dari Tanggal</label>
-                <input type="date" name="date_from" value="<?php echo $date_from; ?>" class="filter-input">
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">Sampai Tanggal</label>
-                <input type="date" name="date_to" value="<?php echo $date_to; ?>" class="filter-input">
-            </div>
             <div class="filter-group">
                 <label class="filter-label">Staff QC</label>
                 <select name="nik" class="filter-input">
@@ -673,174 +669,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
             <button type="submit" class="btn-filter">Tampilkan</button>
         </form>
-
-        <!-- Summary -->
-        <div class="summary-grid">
-            <div class="summary-card accent">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-white">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-                </div>
-                <div class="summary-label">Total Step</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
-                <div class="summary-sub">Periode ini</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-green">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="<?php echo '#059669'; ?>" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                </div>
-                <div class="summary-label">Total Order</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
-                <div class="summary-sub">Selesai</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-blue">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                </div>
-                <div class="summary-label">Staff Aktif</div>
-                <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
-                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-red">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
-                </div>
-                <div class="summary-label">Top Performer</div>
-                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
-                <div class="summary-sub">Step terbanyak</div>
-            </div>
-        </div>
-
-        <!-- Staff Cards -->
-        <div class="section-head">
-            <div class="section-head-line"></div>
-            <div class="section-head-title">Detail per Staff</div>
-        </div>
-        <div class="staff-grid">
-            <?php foreach ($staff_data as $staff):
-                $initials = strtoupper(substr($staff['nama'], 0, 2));
-                $avg = (int)$staff['avg_duration'];
-                $m = floor($avg / 60); $s_dur = $avg % 60;
-                $isZero = $staff['total_step'] == 0;
-            ?>
-            <div class="staff-card">
-                <div class="staff-top">
-                    <div class="staff-avatar <?php echo $isZero ? 'zero' : ''; ?>"><?php echo $initials; ?></div>
-                    <div>
-                        <div class="staff-name"><?php echo htmlspecialchars($staff['nama']); ?></div>
-                        <div class="staff-nik"><?php echo $staff['nik']; ?></div>
-                    </div>
-                </div>
-                <div class="staff-stats">
-                    <div class="stat-box">
-                        <div class="stat-box-val <?php echo $staff['total_order'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_order']; ?></div>
-                        <div class="stat-box-label">Order</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-box-val <?php echo $staff['total_step'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_step']; ?></div>
-                        <div class="stat-box-label">Step</div>
-                    </div>
-                </div>
-                <div class="staff-divider"></div>
-                <?php
-                $mesin_list = [
-                    'CMM' => $staff['cmm_count'],
-                    'RONDCOM' => $staff['rondcom_count'],
-                    'ROUGHNESS' => $staff['roughness_count'],
-                    'CONTOUR' => $staff['contour_count'],
-                    'PROFIL PROJ.' => $staff['profil_count'],
-                    'MANUAL' => $staff['manual_count'],
-                    'HARDNESS' => $staff['hardness_count'],
-                ];
-                foreach ($mesin_list as $ml => $mv): ?>
-                <div class="staff-mesin-row">
-                    <span class="staff-mesin-label"><?php echo $ml; ?></span>
-                    <span class="staff-mesin-val <?php echo $mv > 0 ? 'has' : ''; ?>"><?php echo $mv; ?></span>
-                </div>
-                <?php endforeach; ?>
-                <div class="staff-divider"></div>
-                <div class="staff-mesin-row">
-                    <span class="staff-mesin-label">Avg Durasi</span>
-                    <span class="staff-mesin-val mono"><?php echo "{$m}m {$s_dur}s"; ?></span>
-                </div>
-            </div>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- Charts -->
-        <?php if ($selected_nik === 'all'): ?>
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title">Total Step per Staff</div>
-                <canvas id="chartStep" height="120"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title">Total Order per Staff</div>
-                <canvas id="chartOrder" height="120"></canvas>
-            </div>
-        </div>
-        <?php else: ?>
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title">Step per Mesin — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
-                <canvas id="chartMesin" height="120"></canvas>
-            </div>
-            <div class="chart-card full">
-                <div class="chart-title">Aktivitas Harian — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
-                <canvas id="chartHarian" height="80"></canvas>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Table -->
-        <div class="table-card">
-            <div class="table-head-bar">
-                <div class="section-head-line"></div>
-                <div class="section-head-title" style="margin:0;">Ringkasan Tabel</div>
-            </div>
-            <table class="dash-table">
-                <thead>
-                    <tr>
-                        <th>Nama</th>
-                        <th>NIK</th>
-                        <th>Total Order</th>
-                        <th>Total Step</th>
-                        <th>Avg Durasi</th>
-                        <th>CMM</th>
-                        <th>RONDCOM</th>
-                        <th>ROUGHNESS</th>
-                        <th>CONTOUR</th>
-                        <th>PROFIL</th>
-                        <th>MANUAL</th>
-                        <th>HARDNESS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($staff_data as $staff):
-                        $avg = (int)$staff['avg_duration'];
-                        $m = floor($avg / 60); $s_dur = $avg % 60;
-                    ?>
-                    <tr>
-                        <td><strong><?php echo htmlspecialchars($staff['nama']); ?></strong></td>
-                        <td class="mono"><?php echo $staff['nik']; ?></td>
-                        <td><span class="pill <?php echo $staff['total_order'] > 0 ? 'pill-green' : 'pill-gray'; ?>"><?php echo $staff['total_order']; ?></span></td>
-                        <td><span class="pill <?php echo $staff['total_step'] > 0 ? 'pill-red' : 'pill-gray'; ?>"><?php echo $staff['total_step']; ?></span></td>
-                        <td class="mono"><?php echo "{$m}m {$s_dur}s"; ?></td>
-                        <td class="mono"><?php echo $staff['cmm_count']; ?></td>
-                        <td class="mono"><?php echo $staff['rondcom_count']; ?></td>
-                        <td class="mono"><?php echo $staff['roughness_count']; ?></td>
-                        <td class="mono"><?php echo $staff['contour_count']; ?></td>
-                        <td class="mono"><?php echo $staff['profil_count']; ?></td>
-                        <td class="mono"><?php echo $staff['manual_count']; ?></td>
-                        <td class="mono"><?php echo $staff['hardness_count']; ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
 
         <!-- ── OPERATION RATIO SECTION ─────────────────────────────── -->
         <div class="ratio-section">
@@ -963,6 +791,123 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <?php endif; ?>
         </div>
         <!-- ── END OPERATION RATIO ──────────────────────────────────── -->
+
+        <!-- Summary -->
+        <div class="summary-grid">
+            <div class="summary-card accent">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-white">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+                </div>
+                <div class="summary-label">Total Step</div>
+                <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
+                <div class="summary-sub">Periode ini</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-green">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="<?php echo '#059669'; ?>" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                </div>
+                <div class="summary-label">Total Order</div>
+                <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
+                <div class="summary-sub">Selesai</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                </div>
+                <div class="summary-label">Staff Aktif</div>
+                <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
+                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-red">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+                </div>
+                <div class="summary-label">Top Performer</div>
+                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
+                <div class="summary-sub">Step terbanyak</div>
+            </div>
+        </div>
+
+        <!-- Staff Cards -->
+        <div class="section-head">
+            <div class="section-head-line"></div>
+            <div class="section-head-title">Detail per Staff</div>
+        </div>
+        <div class="staff-grid">
+            <?php foreach ($staff_data as $staff):
+                $initials = strtoupper(substr($staff['nama'], 0, 2));
+                $isZero = $staff['total_step'] == 0;
+            ?>
+            <div class="staff-card">
+                <div class="staff-top">
+                    <div class="staff-avatar <?php echo $isZero ? 'zero' : ''; ?>"><?php echo $initials; ?></div>
+                    <div>
+                        <div class="staff-name"><?php echo htmlspecialchars($staff['nama']); ?></div>
+                        <div class="staff-nik"><?php echo $staff['nik']; ?></div>
+                    </div>
+                </div>
+                <div class="staff-stats">
+                    <div class="stat-box">
+                        <div class="stat-box-val <?php echo $staff['total_order'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_order']; ?></div>
+                        <div class="stat-box-label">Order</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-box-val <?php echo $staff['total_step'] == 0 ? 'zero' : ''; ?>"><?php echo $staff['total_step']; ?></div>
+                        <div class="stat-box-label">Step</div>
+                    </div>
+                </div>
+                <div class="staff-divider"></div>
+                <?php
+                $mesin_list = [
+                    'CMM' => $staff['cmm_count'],
+                    'RONDCOM' => $staff['rondcom_count'],
+                    'ROUGHNESS' => $staff['roughness_count'],
+                    'CONTOUR' => $staff['contour_count'],
+                    'PROFIL PROJ.' => $staff['profil_count'],
+                    'MANUAL' => $staff['manual_count'],
+                    'HARDNESS' => $staff['hardness_count'],
+                ];
+                foreach ($mesin_list as $ml => $mv): ?>
+                <div class="staff-mesin-row">
+                    <span class="staff-mesin-label"><?php echo $ml; ?></span>
+                    <span class="staff-mesin-val <?php echo $mv > 0 ? 'has' : ''; ?>"><?php echo $mv; ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+
+        <!-- Charts -->
+        <?php if ($selected_nik === 'all'): ?>
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Total Step per Staff</div>
+                <canvas id="chartStep" height="120"></canvas>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Total Order per Staff</div>
+                <canvas id="chartOrder" height="120"></canvas>
+            </div>
+        </div>
+        <?php else: ?>
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Step per Mesin — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
+                <canvas id="chartMesin" height="120"></canvas>
+            </div>
+            <div class="chart-card full">
+                <div class="chart-title">Aktivitas Harian — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
+                <canvas id="chartHarian" height="80"></canvas>
+            </div>
+        </div>
+        <?php endif; ?>
+
+
+
 
     </div>
 </div>
