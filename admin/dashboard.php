@@ -886,9 +886,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                             $djam = floor($d['total_detik'] / 3600);
                             $dmnt = floor(($d['total_detik'] % 3600) / 60);
                         ?>
+
                         <div class="ratio-day-row">
                             <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
                             <span style="font-size:10px;color:var(--text3);min-width:40px;"><?php echo $d['shift_nama']; ?></span>
+                            <div class="ratio-bar-wrap" style="flex:1;">
                                 <div class="ratio-bar-bg">
                                     <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
                                 </div>
