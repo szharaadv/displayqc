@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id'])) {
@@ -73,8 +74,10 @@ $query = mysqli_query($conn, "
 
         <br><br>
 
+        <div style="max-height: calc(100vh - 220px); overflow-y: auto; border-radius: 8px; border: 1px solid rgba(0,0,0,0.07);">
         <table>
             <tr>
+                <tr style="position: sticky; top: 0; z-index: 10;">
                 <th>Order Code</th>
                 <th>Category</th>
                 <th>Part No</th>

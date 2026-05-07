@@ -727,12 +727,12 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
 
             <?php
-            function ratioClass($r) {
+            function ratioClass(float $r): string {
                 if ($r >= 80) return 'high';
                 if ($r >= 50) return 'mid';
                 return 'low';
             }
-            function ratioLabel($r) {
+            function ratioLabel(float $r): string {
                 if ($r >= 80) return '🟢 Produktif';
                 if ($r >= 50) return '🟡 Normal';
                 return '🔴 Perhatian';
@@ -988,7 +988,7 @@ new Chart(document.getElementById('chartHarian'), {
     }, 30000);
 
     // Auto scroll pelan-pelan terus menerus
-    let scrollSpeed = 0.5;
+    let scrollSpeed = 0.3;
     let scrolling   = true;
 
     function autoScroll() {

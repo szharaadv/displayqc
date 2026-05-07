@@ -149,12 +149,12 @@ $top_staff       = !empty($summary_data) ? $summary_data[0]['nama'] : '-';
 $month_names = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 $period_label = $month_names[$sel_month] . ' ' . $sel_year;
 
-function ratioClass($r) {
+function ratioClass(float $r): string {
     if ($r >= 80) return 'high';
     if ($r >= 50) return 'mid';
     return 'low';
 }
-function ratioLabel($r) {
+function ratioLabel(float $r): string {
     if ($r >= 80) return '🟢 Produktif';
     if ($r >= 50) return '🟡 Normal';
     return '🔴 Perhatian';
@@ -576,8 +576,8 @@ function ratioLabel($r) {
         </div>
 
         <!-- Summary per Staff -->
-        <div class="table-card">
-            <div class="table-head-bar">
+         <div class="table-card" style="max-height: 350px; overflow-y: auto;">
+            <div class="table-head-bar" style="position: sticky; top: 0; z-index: 10; background: var(--surface);">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div class="section-head-line"></div>
                     <div class="section-head-title" style="margin:0;">Summary per Staff</div>
@@ -585,7 +585,7 @@ function ratioLabel($r) {
                 <span style="font-size:11px;color:var(--text3);"><?php echo $period_label; ?></span>
             </div>
             <table class="dash-table">
-                <thead>
+                <thead style="position: sticky; top: 57px; z-index: 9;">
                     <tr>
                         <th>Nama</th>
                         <th>NIK</th>
