@@ -646,7 +646,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         }
         .ratio-grid-all {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 14px;
         }
     </style>
