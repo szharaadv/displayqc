@@ -632,9 +632,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
         .ratio-day-row {
             display: flex; align-items: center;
-            gap: 10px; padding: 5px 0;
+            gap: 6px; padding: 5px 0;
             border-bottom: 1px solid var(--border);
             font-size: 12px;
+            flex-wrap: nowrap;
+            overflow: hidden;
         }
         .ratio-day-row:last-child { border-bottom: none; }
         .ratio-day-label {
@@ -770,7 +772,18 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;">Basis 8 jam kerja/hari &nbsp;|&nbsp;
+                <?php
+                $now_minutes = (int)date('H') * 60 + (int)date('i');
+                if ($now_minutes >= 390 && $now_minutes < 915) {
+                    $shift_aktif = 'Shift 1 (06:30-15:14) | Efektif 8 jam';
+                } elseif ($now_minutes >= 915 && $now_minutes < 1380) {
+                    $shift_aktif = 'Shift 2 (15:15-22:59) | Efektif 7,5 jam';
+                } else {
+                    $shift_aktif = 'Shift 3 (23:00-06:29) | Efektif 6,75 jam';
+                }
+                ?>
+                <span style="font-size:11px;color:var(--text3);margin-left:8px;">
+                    Shift Aktif: <strong><?php echo $shift_aktif; ?></strong> &nbsp;|&nbsp;
                     <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
                     <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
                     <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
@@ -874,8 +887,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                         ?>
                         <div class="ratio-day-row">
                             <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
-                            <span style="font-size:10px;color:var(--text3);min-width:50px;"><?php echo $d['shift_nama']; ?></span>
-                            <div class="ratio-bar-wrap" style="flex:1;">
+                            <span style="font-size:10px;color:var(--text3);min-width:40px;"><?php echo $d['shift_nama']; ?></span>
                                 <div class="ratio-bar-bg">
                                     <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
                                 </div>
