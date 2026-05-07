@@ -67,70 +67,121 @@ if ($selected_nik !== 'all') {
     while ($d = mysqli_fetch_assoc($dailyQuery)) $daily_data[] = $d;
 }
 
-// ── Operation Ratio Queries ──────────────────────────────────────────────────
-// Konstanta: 8 jam kerja = 28800 detik
-define('WORK_SECONDS', 28800);
+// ── Shift Definition ─────────────────────────────────────────────────────────
+// Shift 1: 06:30 - 15:14 → 28800 detik efektif
+// Shift 2: 15:15 - 22:59 → 27000 detik efektif
+// Shift 3: 23:00 - 06:29 → 24300 detik efektif
 
-// Per hari per staff (untuk tabel & chart ratio harian)
+function getShift(string $start_time): array {
+    $h   = (int)date('H', strtotime($start_time));
+    $m   = (int)date('i', strtotime($start_time));
+    $tot = $h * 60 + $m;
+
+    if ($tot >= 390 && $tot < 915) {
+        return ['nama' => 'Shift 1', 'detik' => 28800];
+    } elseif ($tot >= 915 && $tot < 1380) {
+        return ['nama' => 'Shift 2', 'detik' => 27000];
+    } else {
+        return ['nama' => 'Shift 3', 'detik' => 24300];
+    }
+}
+
+// ── Operation Ratio Queries ───────────────────────────────────────────────────
 $ratio_daily_data = [];
+
 if ($selected_nik !== 'all') {
-    // Satu staff: ratio per hari
     $nik_esc3 = mysqli_real_escape_string($conn, $selected_nik);
-    $ratioQ = mysqli_query($conn, "
+    $ratioQ   = mysqli_query($conn, "
         SELECT
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+            sps.start_time,
+            TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
           AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
           AND sps.status = 'done'
           AND sps.end_time IS NOT NULL
-        GROUP BY DATE(sps.start_time)
-        ORDER BY tgl ASC
+        ORDER BY sps.start_time ASC
     ");
+
+    // Kelompokkan per hari per shift
+    $grouped = [];
     while ($r = mysqli_fetch_assoc($ratioQ)) {
-        $r['ratio'] = min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1));
-        $ratio_daily_data[] = $r;
+        $tgl   = date('Y-m-d', strtotime($r['start_time']));
+        $shift = getShift($r['start_time']);
+        $key   = $tgl . '|' . $shift['nama'];
+        if (!isset($grouped[$key])) {
+            $grouped[$key] = [
+                'tgl'        => $tgl,
+                'shift_nama' => $shift['nama'],
+                'work_sec'   => $shift['detik'],
+                'total_detik'=> 0,
+            ];
+        }
+        $grouped[$key]['total_detik'] += (int)$r['durasi'];
     }
+
+    foreach ($grouped as $g) {
+        $ratio = min(100, round(($g['total_detik'] / $g['work_sec']) * 100, 1));
+        $ratio_daily_data[] = [
+            'tgl'         => $g['tgl'],
+            'shift_nama'  => $g['shift_nama'],
+            'total_detik' => $g['total_detik'],
+            'ratio'       => $ratio,
+        ];
+    }
+
 } else {
-    // Semua staff: ratio per staff (rata-rata dari hari aktif)
     $ratioAllQ = mysqli_query($conn, "
         SELECT
             u.id, u.nama, u.nik,
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+            sps.start_time,
+            TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
           AND sps.status = 'done'
           AND sps.end_time IS NOT NULL
           $whereNik
-        GROUP BY u.id, u.nama, u.nik, DATE(sps.start_time)
-        ORDER BY u.nama ASC, tgl ASC
+        ORDER BY u.nama ASC, sps.start_time ASC
     ");
+
     $ratio_by_staff = [];
     while ($r = mysqli_fetch_assoc($ratioAllQ)) {
-        $uid = $r['id'];
+        $uid   = $r['id'];
+        $tgl   = date('Y-m-d', strtotime($r['start_time']));
+        $shift = getShift($r['start_time']);
+        $key   = $tgl . '|' . $shift['nama'];
+
         if (!isset($ratio_by_staff[$uid])) {
             $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
         }
-        $ratio_by_staff[$uid]['days'][] = [
-            'tgl'        => $r['tgl'],
-            'total_detik'=> $r['total_detik'],
-            'ratio'      => min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1)),
-        ];
+        if (!isset($ratio_by_staff[$uid]['days'][$key])) {
+            $ratio_by_staff[$uid]['days'][$key] = [
+                'tgl'         => $tgl,
+                'shift_nama'  => $shift['nama'],
+                'work_sec'    => $shift['detik'],
+                'total_detik' => 0,
+            ];
+        }
+        $ratio_by_staff[$uid]['days'][$key]['total_detik'] += (int)$r['durasi'];
     }
-    // Hitung avg ratio per staff
+
     foreach ($ratio_by_staff as $uid => &$s) {
-        $s['avg_ratio'] = count($s['days']) > 0
-            ? round(array_sum(array_column($s['days'], 'ratio')) / count($s['days']), 1)
+        $days_arr = [];
+        foreach ($s['days'] as $d) {
+            $ratio     = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
+            $days_arr[] = array_merge($d, ['ratio' => $ratio]);
+        }
+        $s['days']      = array_values($days_arr);
+        $s['avg_ratio'] = count($days_arr) > 0
+            ? round(array_sum(array_column($days_arr, 'ratio')) / count($days_arr), 1)
             : 0;
     }
     unset($s);
     $ratio_daily_data = array_values($ratio_by_staff);
 }
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 $total_all_step  = array_sum(array_column($staff_data, 'total_step'));
 $total_all_order = array_sum(array_column($staff_data, 'total_order'));
@@ -754,6 +805,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                         <thead>
                             <tr>
                                 <th>Tanggal</th>
+                                <th>Shift</th>
                                 <th>Waktu Aktif</th>
                                 <th style="min-width:200px;">Operation Ratio</th>
                                 <th>Status</th>
@@ -761,12 +813,17 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                         </thead>
                         <tbody>
                             <?php foreach ($ratio_daily_data as $rd):
-                                $cls   = ratioClass($rd['ratio']);
-                                $jam   = floor($rd['total_detik'] / 3600);
-                                $mnt   = floor(($rd['total_detik'] % 3600) / 60);
+                                $cls = ratioClass($rd['ratio']);
+                                $jam = floor($rd['total_detik'] / 3600);
+                                $mnt = floor(($rd['total_detik'] % 3600) / 60);
                             ?>
                             <tr>
                                 <td class="mono"><?php echo $rd['tgl']; ?></td>
+                                <td>
+                                    <span style="font-size:11px;font-weight:600;color:var(--text2);">
+                                        <?php echo $rd['shift_nama']; ?>
+                                    </span>
+                                </td>
                                 <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
@@ -817,6 +874,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                         ?>
                         <div class="ratio-day-row">
                             <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
+                            <span style="font-size:10px;color:var(--text3);min-width:50px;"><?php echo $d['shift_nama']; ?></span>
                             <div class="ratio-bar-wrap" style="flex:1;">
                                 <div class="ratio-bar-bg">
                                     <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
