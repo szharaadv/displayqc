@@ -16,7 +16,7 @@ $date_to      = date('Y-m-d');
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
 $staffList = [];
-$staffQuery = mysqli_query($conn, "SELECT id, nik, nama FROM users WHERE role = 'qc' ORDER BY nama ASC");
+$staffQuery = mysqli_query($conn, "SELECT id, nik, nama FROM users WHERE role = 'qc' AND status = 1 ORDER BY nama ASC");
 while ($s = mysqli_fetch_assoc($staffQuery)) $staffList[] = $s;
 
 $whereNik = "";
@@ -42,7 +42,7 @@ $query = mysqli_query($conn, "
     LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
         AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
         AND sps.status = 'done'
-    WHERE u.role = 'qc' $whereNik
+    WHERE u.role = 'qc' AND u.status = 1
     GROUP BY u.id, u.nama, u.nik
     ORDER BY total_step DESC
 ");
