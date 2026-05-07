@@ -242,7 +242,11 @@ function ratioLabel(float $r): string {
         .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
         .topbar-title { font-size: 15px; font-weight: 700; color: var(--text); }
         .topbar-date  { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .content { padding: 24px 28px; }
+        .content {
+            padding: 24px 28px;
+            height: calc(100vh - 56px);
+            overflow-y: auto;
+        }
 
         /* FILTER */
         .filter-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 22px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; box-shadow: var(--shadow); }
@@ -690,5 +694,32 @@ function ratioLabel(float $r): string {
     </div>
 </div>
 
+<script>
+    // Auto scroll pelan-pelan
+    let scrollSpeed = 0.3;
+    let scrolling   = true;
+
+    function autoScroll() {
+        if (!scrolling) return;
+        const content = document.querySelector('.content');
+        if (!content) return;
+        if (content.scrollTop + content.clientHeight >= content.scrollHeight - 5) {
+            content.scrollTop = 0;
+        } else {
+            content.scrollTop += scrollSpeed;
+        }
+        requestAnimationFrame(autoScroll);
+    }
+
+    const contentEl = document.querySelector('.content');
+    if (contentEl) {
+        contentEl.addEventListener('mouseenter', () => scrolling = false);
+        contentEl.addEventListener('mouseleave', () => {
+            scrolling = true;
+            autoScroll();
+        });
+        autoScroll();
+    }
+</script>
 </body>
 </html>
