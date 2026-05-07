@@ -306,6 +306,13 @@ function renderCards(array $rows, string $mode = 'waiting') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main Display QC</title>
     <link rel="stylesheet" href="../assets/style.css?v=22">
+
+    <script>
+    const serverTime = new Date("<?php echo date('Y-m-d H:i:s'); ?>");
+    const clientTime = new Date();
+    const timeDiff   = clientTime - serverTime; // selisih ms
+    </script>
+
 </head>
 <body class="main-display-body">
     <div class="main-display-topbar">
@@ -434,7 +441,7 @@ function renderCards(array $rows, string $mode = 'waiting') {
         }
 
         function updateLiveProgress() {
-            const now = new Date();
+            const now = new Date(new Date() - timeDiff);
 
             document.querySelectorAll('.live-timer').forEach(el => {
                 const start   = new Date(el.dataset.startTime.replace(' ', 'T'));
