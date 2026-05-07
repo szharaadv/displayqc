@@ -359,6 +359,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             padding: 24px 28px;
             height: calc(100vh - 56px);
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         /* FILTER */
