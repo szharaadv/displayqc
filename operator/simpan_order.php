@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
 /** @var mysqli $conn */
@@ -15,8 +16,8 @@ $machine_id = (int) $_POST['machine_id'];
 $qty        = (int) $_POST['qty'];
 $created_by = (int) $_SESSION['id'];
 
-$cekPart = mysqli_query($conn, "SELECT * FROM master_parts WHERE id='$part_id' AND category='$category'");
-$cekLine = mysqli_query($conn, "SELECT * FROM master_lines WHERE id='$line_id' AND category='$category'");
+$cekPart    = mysqli_query($conn, "SELECT * FROM master_parts WHERE id='$part_id' AND category='$category'");
+$cekLine    = mysqli_query($conn, "SELECT * FROM master_lines WHERE id='$line_id' AND category='$category'");
 $cekMachine = mysqli_query($conn, "SELECT * FROM master_machines WHERE id='$machine_id' AND category='$category'");
 
 if (
