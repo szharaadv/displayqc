@@ -304,7 +304,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         .topbar-date  { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
 
         /* CONTENT */
-        .content { padding: 24px 28px; }
+        .content {
+            padding: 24px 28px;
+            height: calc(100vh - 56px);
+            overflow-y: auto;
+        }
 
         /* FILTER */
         .filter-card {
@@ -977,6 +981,37 @@ new Chart(document.getElementById('chartHarian'), {
     options: { ...chartOpts, plugins: { legend: { display: true, labels: { color: '#6b7280', font: { family: 'Plus Jakarta Sans', size: 12 } } } } }
 });
 <?php endif; ?>
+
+    // Auto refresh setiap 30 detik
+    setTimeout(() => {
+        window.location.reload();
+    }, 30000);
+
+    // Auto scroll pelan-pelan terus menerus
+    let scrollSpeed = 0.5;
+    let scrolling   = true;
+
+    function autoScroll() {
+        if (!scrolling) return;
+        const content = document.querySelector('.content');
+        if (!content) return;
+        if (content.scrollTop + content.clientHeight >= content.scrollHeight - 5) {
+            content.scrollTop = 0;
+        } else {
+            content.scrollTop += scrollSpeed;
+        }
+        requestAnimationFrame(autoScroll);
+    }
+
+    const contentEl = document.querySelector('.content');
+    if (contentEl) {
+        contentEl.addEventListener('mouseenter', () => scrolling = false);
+        contentEl.addEventListener('mouseleave', () => {
+            scrolling = true;
+            autoScroll();
+        });
+        autoScroll();
+    }
 </script>
 </body>
 </html>
