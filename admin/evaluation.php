@@ -696,30 +696,35 @@ function ratioLabel(float $r): string {
 
 <script>
     // Auto scroll pelan-pelan
-    let scrollSpeed = 0.5; // pixel per frame
-    let scrolling   = true;
+        let scrollSpeed = 0.3;
+        let scrolling   = true;
+        let scrollPos   = 0;
 
-    function autoScroll() {
-        if (!scrolling) return;
-        const content = document.querySelector('.content');
-        if (!content) return;
-        if (content.scrollTop + content.clientHeight >= content.scrollHeight - 5) {
-            content.scrollTop = 0;
-        } else {
-            content.scrollTop += scrollSpeed;
+        function autoScroll() {
+            if (!scrolling) return;
+            const content = document.querySelector('.content');
+            if (!content) return;
+
+            scrollPos += scrollSpeed;
+
+            if (scrollPos + content.clientHeight >= content.scrollHeight - 5) {
+                scrollPos = 0;
+            }
+
+            content.scrollTop = scrollPos;
+            requestAnimationFrame(autoScroll);
         }
-        requestAnimationFrame(autoScroll);
-    }
 
-    const contentEl = document.querySelector('.content');
-    if (contentEl) {
-        contentEl.addEventListener('mouseenter', () => scrolling = false);
-        contentEl.addEventListener('mouseleave', () => {
-            scrolling = true;
+        const contentEl = document.querySelector('.content');
+        if (contentEl) {
+            scrollPos = contentEl.scrollTop;
+            contentEl.addEventListener('mouseenter', () => scrolling = false);
+            contentEl.addEventListener('mouseleave', () => {
+                scrolling = true;
+                autoScroll();
+            });
             autoScroll();
-        });
-        autoScroll();
-    }
+        }
 </script>
 </body>
 </html>
