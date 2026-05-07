@@ -632,12 +632,12 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         .ratio-staff-name { font-size: 13px; font-weight: 700; color: var(--text); }
         .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
         .ratio-day-row {
-            display: flex; align-items: center;
-            gap: 6px; padding: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 0;
             border-bottom: 1px solid var(--border);
             font-size: 12px;
-            flex-wrap: nowrap;
-            overflow: hidden;
         }
         .ratio-day-row:last-child { border-bottom: none; }
         .ratio-day-label {
@@ -886,19 +886,15 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                             $djam = floor($d['total_detik'] / 3600);
                             $dmnt = floor(($d['total_detik'] % 3600) / 60);
                         ?>
-
                         <div class="ratio-day-row">
-                            <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
-                            <span style="font-size:10px;color:var(--text3);min-width:40px;"><?php echo $d['shift_nama']; ?></span>
-                            <div class="ratio-bar-wrap" style="flex:1;">
-                                <div class="ratio-bar-bg">
-                                    <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
-                                </div>
-                                <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
+                            <span style="font-size:10px;color:var(--text2);font-family:'JetBrains Mono',monospace;min-width:80px;"><?php echo $d['tgl']; ?></span>
+                            <span style="font-size:10px;color:var(--text3);min-width:44px;"><?php echo $d['shift_nama']; ?></span>
+                            <div class="ratio-bar-bg" style="flex:1;height:8px;">
+                                <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
                             </div>
-                            <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
+                            <span class="ratio-val <?php echo $dcls; ?>" style="min-width:42px;"><?php echo $d['ratio']; ?>%</span>
+                            <span style="font-size:10px;color:var(--text3);min-width:44px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
                         </div>
-                        <!-- debug: total_detik = <?php echo $d['total_detik']; ?> -->
                         <?php endforeach; ?>
                     </div>
                     <?php endforeach; ?>
