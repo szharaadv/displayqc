@@ -1,10 +1,11 @@
 <?php
 session_start();
 include '../config/koneksi.php';
+/** @var mysqli $conn */
 
 if (!isset($_SESSION['id'])) {
-    header("Location: ../qc/main_display.php?success=1&order_code=" . urlencode($order_code));
-exit;
+    header("Location: ../auth/login.php");
+    exit;
 }
 
 $category   = mysqli_real_escape_string($conn, $_POST['category']);

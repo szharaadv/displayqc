@@ -15,10 +15,9 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$order_id   = isset($_POST['order_id'])   ? (int) $_POST['order_id']                                    : 0;
-$nik        = isset($_POST['nik'])        ? mysqli_real_escape_string($conn, trim($_POST['nik']))        : '';
-$password   = isset($_POST['password'])   ? trim($_POST['password'])                                     : '';
+$order_id   = isset($_POST['order_id'])   ? (int) $_POST['order_id']                                     : 0;
 $qc_machine = isset($_POST['qc_machine']) ? mysqli_real_escape_string($conn, trim($_POST['qc_machine'])) : '';
+$qc_user_id = (int) $_SESSION['id'];
 
 $allowed_machines = ['CMM', 'RONDCOM', 'ROUGHNESS', 'CONTOUR', 'PROFIL PROJECTOR', 'MANUAL', 'HARDNESS CHECK'];
 
@@ -32,31 +31,8 @@ if (!in_array($qc_machine, $allowed_machines, true)) {
     exit;
 }
 
-$userQuery = mysqli_query($conn, "
-    SELECT *
-    FROM users
-    WHERE nik = '$nik'
-      AND role = 'qc'
-      AND status = 1
-    LIMIT 1
-");
-
-if (!$userQuery || mysqli_num_rows($userQuery) === 0) {
-    header("Location: main_display.php?section=job&error_qc=1");
-    exit;
-}
-
-$user = mysqli_fetch_assoc($userQuery);
-if (!password_verify($password, $user['password'])) {
-    header("Location: main_display.php?section=job&error_qc=1");
-    exit;
-}
-
-$qc_user_id = (int) $user['id'];
-
 $orderQuery = mysqli_query($conn, "
-    SELECT *
-    FROM sampling_orders
+    SELECT * FROM sampling_orders
     WHERE id = $order_id
     LIMIT 1
 ");
@@ -74,8 +50,7 @@ if ($order['status'] === 'done') {
 }
 
 $cekMesin = mysqli_query($conn, "
-    SELECT *
-    FROM sampling_process_steps
+    SELECT * FROM sampling_process_steps
     WHERE order_id = $order_id
       AND qc_machine = '$qc_machine'
     ORDER BY id DESC

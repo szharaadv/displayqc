@@ -652,7 +652,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         <span class="topbar-date" style="font-size:15px;font-weight:700;color:var(--text);"><?php echo date('l, d F Y'); ?></span>
     </div>
 
-    <div class="content">
+<div class="content">
 
         <!-- Filter -->
         <form method="GET" class="filter-card">
@@ -669,6 +669,46 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
             <button type="submit" class="btn-filter">Tampilkan</button>
         </form>
+
+        <!-- Summary -->
+        <div class="summary-grid">
+            <div class="summary-card accent">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-white">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+                </div>
+                <div class="summary-label">Total Step</div>
+                <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
+                <div class="summary-sub">Periode ini</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-green">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                </div>
+                <div class="summary-label">Total Order</div>
+                <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
+                <div class="summary-sub">Selesai</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                </div>
+                <div class="summary-label">Staff Aktif</div>
+                <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
+                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-card-bar"></div>
+                <div class="summary-icon icon-red">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
+                </div>
+                <div class="summary-label">Top Performer</div>
+                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
+                <div class="summary-sub">Step terbanyak</div>
+            </div>
+        </div>
 
         <!-- ── OPERATION RATIO SECTION ─────────────────────────────── -->
         <div class="ratio-section">
@@ -696,7 +736,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             ?>
 
             <?php if ($selected_nik !== 'all'): ?>
-                <!-- Satu staff: tabel per hari -->
                 <?php if (empty($ratio_daily_data)): ?>
                     <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
                 <?php else: ?>
@@ -742,7 +781,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <?php endif; ?>
 
             <?php else: ?>
-                <!-- Semua staff: kartu per staff dengan avg ratio + breakdown hari -->
                 <?php if (empty($ratio_daily_data)): ?>
                     <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
                 <?php else: ?>
@@ -792,46 +830,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         </div>
         <!-- ── END OPERATION RATIO ──────────────────────────────────── -->
 
-        <!-- Summary -->
-        <div class="summary-grid">
-            <div class="summary-card accent">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-white">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
-                </div>
-                <div class="summary-label">Total Step</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
-                <div class="summary-sub">Periode ini</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-green">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="<?php echo '#059669'; ?>" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                </div>
-                <div class="summary-label">Total Order</div>
-                <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
-                <div class="summary-sub">Selesai</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-blue">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                </div>
-                <div class="summary-label">Staff Aktif</div>
-                <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
-                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-red">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
-                </div>
-                <div class="summary-label">Top Performer</div>
-                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
-                <div class="summary-sub">Step terbanyak</div>
-            </div>
-        </div>
-
         <!-- Staff Cards -->
         <div class="section-head">
             <div class="section-head-line"></div>
@@ -863,13 +861,13 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <div class="staff-divider"></div>
                 <?php
                 $mesin_list = [
-                    'CMM' => $staff['cmm_count'],
-                    'RONDCOM' => $staff['rondcom_count'],
-                    'ROUGHNESS' => $staff['roughness_count'],
-                    'CONTOUR' => $staff['contour_count'],
+                    'CMM'          => $staff['cmm_count'],
+                    'RONDCOM'      => $staff['rondcom_count'],
+                    'ROUGHNESS'    => $staff['roughness_count'],
+                    'CONTOUR'      => $staff['contour_count'],
                     'PROFIL PROJ.' => $staff['profil_count'],
-                    'MANUAL' => $staff['manual_count'],
-                    'HARDNESS' => $staff['hardness_count'],
+                    'MANUAL'       => $staff['manual_count'],
+                    'HARDNESS'     => $staff['hardness_count'],
                 ];
                 foreach ($mesin_list as $ml => $mv): ?>
                 <div class="staff-mesin-row">
@@ -905,9 +903,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
         </div>
         <?php endif; ?>
-
-
-
 
     </div>
 </div>

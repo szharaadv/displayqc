@@ -15,10 +15,11 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$section = isset($_GET['section']) ? $_GET['section'] : 'job';
-$today = date('Y-m-d');
+$section  = isset($_GET['section']) ? $_GET['section'] : 'job';
+$today    = date('Y-m-d');
+$user_id  = (int)$_SESSION['id'];
 
-$query = mysqli_query($conn, "
+$subquery = "
     SELECT
         so.id,
         so.order_code,
@@ -70,17 +71,35 @@ $query = mysqli_query($conn, "
         MAX(CASE WHEN sps.qc_machine = 'CONTOUR'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS contour_done,
         MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN 1 ELSE 0 END) AS profil_done,
         MAX(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
-        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done,
+
+        MAX(CASE WHEN sps.qc_machine = 'CMM'              AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS cmm_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'RONDCOM'          AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS rondcom_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS'        AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS roughness_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'CONTOUR'          AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS contour_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS profil_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS manual_durasi,
+        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS hardness_durasi
 
     FROM sampling_orders so
     JOIN master_parts mp ON so.part_id = mp.id
     JOIN master_lines ml ON so.line_id = ml.id
     JOIN master_machines mm ON so.machine_id = mm.id
     LEFT JOIN sampling_process_steps sps ON sps.order_id = so.id
-    WHERE (
-        DATE(so.created_at) = '$today'
-        OR so.status IN ('waiting', 'in_progress', 'partial_done')
-    )
+";
+
+$query_mine = mysqli_query($conn, $subquery . "
+    WHERE so.created_by = $user_id
+      AND so.status IN ('waiting', 'in_progress', 'partial_done')
+    GROUP BY
+        so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
+        mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
+    ORDER BY so.id DESC
+");
+
+$query_done = mysqli_query($conn, $subquery . "
+    WHERE so.status = 'done'
+      AND DATE(so.created_at) = '$today'
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
@@ -91,20 +110,30 @@ $waiting  = [];
 $progress = [];
 $done     = [];
 
-while ($row = mysqli_fetch_assoc($query)) {
+while ($row = mysqli_fetch_assoc($query_mine)) {
     if ($row['status'] === 'waiting') {
         $waiting[] = $row;
     } elseif ($row['status'] === 'in_progress' || $row['status'] === 'partial_done') {
         $progress[] = $row;
-    } elseif ($row['status'] === 'done') {
-        $done[] = $row;
     }
+}
+
+while ($row = mysqli_fetch_assoc($query_done)) {
+    $done[] = $row;
 }
 
 $total_sampling   = count($waiting) + count($progress) + count($done);
 $total_processing = count($progress);
 $total_done       = count($done);
 $date_now         = date('d F Y');
+$nama_login       = isset($_SESSION['nama']) ? $_SESSION['nama'] : '';
+
+function durStr(?int $sec): string {
+    if ($sec === null) return '';
+    $m = floor($sec / 60);
+    $s = $sec % 60;
+    return "{$m}m {$s}s";
+}
 
 function renderCards(array $rows, string $mode = 'waiting') {
     $tz = new DateTimeZone('Asia/Jakarta');
@@ -115,8 +144,8 @@ function renderCards(array $rows, string $mode = 'waiting') {
     }
 
     foreach ($rows as $row) {
-        $elapsed   = 0;
-        $doneSec   = (int)($row['total_done_seconds'] ?? 0);
+        $elapsed = 0;
+        $doneSec = (int)($row['total_done_seconds'] ?? 0);
 
         if (!empty($row['start_time'])) {
             $startDt = new DateTime($row['start_time'], $tz);
@@ -140,17 +169,21 @@ function renderCards(array $rows, string $mode = 'waiting') {
         $minutes   = floor(($elapsed % 3600) / 60);
         $seconds   = $elapsed % 60;
         $timerText = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+
+        $mesin_map = [
+            'CMM'              => ['done' => $row['cmm_done'],          'durasi' => $row['cmm_durasi']],
+            'RONDCOM'          => ['done' => $row['rondcom_done'],       'durasi' => $row['rondcom_durasi']],
+            'ROUGHNESS'        => ['done' => $row['roughness_done'],     'durasi' => $row['roughness_durasi']],
+            'CONTOUR'          => ['done' => $row['contour_done'],       'durasi' => $row['contour_durasi']],
+            'PROFIL PROJECTOR' => ['done' => $row['profil_done'],        'durasi' => $row['profil_durasi']],
+            'MANUAL'           => ['done' => $row['manual_done'],        'durasi' => $row['manual_durasi']],
+            'HARDNESS CHECK'   => ['done' => $row['hardness_check_done'],'durasi' => $row['hardness_durasi']],
+        ];
         ?>
         <div class="job-card">
-            <div class="job-card-code">
-                <?php echo htmlspecialchars($row['order_code']); ?>
-            </div>
-            <div class="job-card-name">
-                <?php echo htmlspecialchars($row['part_name']); ?>
-            </div>
-            <div class="job-card-partno">
-                <?php echo htmlspecialchars($row['part_no']); ?>
-            </div>
+            <div class="job-card-code"><?php echo htmlspecialchars($row['order_code']); ?></div>
+            <div class="job-card-name"><?php echo htmlspecialchars($row['part_name']); ?></div>
+            <div class="job-card-partno"><?php echo htmlspecialchars($row['part_no']); ?></div>
 
             <div class="job-card-row">
                 <span>LINE</span>
@@ -173,34 +206,24 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 <strong><?php echo $row['qc_machine'] ? htmlspecialchars($row['qc_machine']) : '-'; ?></strong>
             </div>
 
+            <?php foreach ($mesin_map as $nama => $val):
+                $isDone  = (int)$val['done'] === 1;
+                $durStr  = ($isDone && $val['durasi'] !== null) ? durStr((int)$val['durasi']) : '';
+            ?>
             <div class="job-card-row">
-                <span>CMM</span>
-                <strong><?php echo ((int)$row['cmm_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
+                <span><?php echo $nama; ?></span>
+                <strong>
+                    <?php if ($isDone): ?>
+                        <span class="check-done">✅</span>
+                        <?php if ($durStr): ?>
+                            <span style="font-size:10px;color:var(--text-soft);font-weight:400;margin-left:4px;"><?php echo $durStr; ?></span>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <span class="check-pending">—</span>
+                    <?php endif; ?>
+                </strong>
             </div>
-            <div class="job-card-row">
-                <span>RONDCOM</span>
-                <strong><?php echo ((int)$row['rondcom_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
-            <div class="job-card-row">
-                <span>ROUGHNESS</span>
-                <strong><?php echo ((int)$row['roughness_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
-            <div class="job-card-row">
-                <span>CONTOUR</span>
-                <strong><?php echo ((int)$row['contour_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
-            <div class="job-card-row">
-                <span>PROFIL PROJECTOR</span>
-                <strong><?php echo ((int)$row['profil_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
-            <div class="job-card-row">
-                <span>MANUAL</span>
-                <strong><?php echo ((int)$row['manual_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
-            <div class="job-card-row">
-                <span>HARDNESS CHECK</span>
-                <strong><?php echo ((int)$row['hardness_check_done'] === 1) ? '<span class="check-done">✅</span>' : '<span class="check-pending">—</span>'; ?></strong>
-            </div>
+            <?php endforeach; ?>
 
             <?php if (!empty($row['start_time'])): ?>
             <div class="job-card-row">
@@ -288,8 +311,8 @@ function renderCards(array $rows, string $mode = 'waiting') {
     <div class="main-display-topbar">
         <div class="main-display-title">QC SAMPLING DISPLAY</div>
         <div class="main-display-info">
+            <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
             Tanggal : <strong><?php echo $date_now; ?></strong> |
-            Total Sampling : <strong><?php echo $total_sampling; ?></strong> |
             Processing : <strong><?php echo $total_processing; ?></strong> |
             Done : <strong><?php echo $total_done; ?></strong>
         </div>
@@ -299,7 +322,7 @@ function renderCards(array $rows, string $mode = 'waiting') {
         <aside class="main-display-sidebar">
             <div class="sidebar-title">QC MENU</div>
             <a href="../menu.php" class="sidebar-btn">BACK</a>
-            <a href="display.php" class="sidebar-btn">ORDER REQUEST</a>
+            <a href="../operator/create_order.php" class="sidebar-btn">CREATE ORDER</a>
             <div class="sidebar-divider"></div>
             <a href="main_display.php?section=job"      class="sidebar-btn <?php echo $section === 'job'      ? 'active' : ''; ?>">JOB ORDER</a>
             <a href="main_display.php?section=progress" class="sidebar-btn <?php echo $section === 'progress' ? 'active' : ''; ?>">ON PROGRESS</a>
@@ -309,9 +332,6 @@ function renderCards(array $rows, string $mode = 'waiting') {
         </aside>
 
         <main class="main-display-content">
-            <?php if (isset($_GET['error_qc'])): ?>
-                <p class="error">NIK atau password QC salah.</p>
-            <?php endif; ?>
             <?php if (isset($_GET['error_machine'])): ?>
                 <p class="error">Mesin QC tidak valid.</p>
             <?php endif; ?>
@@ -339,21 +359,21 @@ function renderCards(array $rows, string $mode = 'waiting') {
 
             <?php if ($section === 'job'): ?>
                 <section class="display-section">
-                    <div class="section-header section-header-waiting">JOB ORDER</div>
+                    <div class="section-header section-header-waiting">JOB ORDER — <?php echo htmlspecialchars($nama_login); ?></div>
                     <div class="job-grid">
                         <?php renderCards($waiting, 'waiting'); ?>
                     </div>
                 </section>
             <?php elseif ($section === 'progress'): ?>
                 <section class="display-section">
-                    <div class="section-header section-header-progress">ON PROGRESS</div>
+                    <div class="section-header section-header-progress">ON PROGRESS — <?php echo htmlspecialchars($nama_login); ?></div>
                     <div class="job-grid">
                         <?php renderCards($progress, 'progress'); ?>
                     </div>
                 </section>
             <?php elseif ($section === 'done'): ?>
                 <section class="display-section">
-                    <div class="section-header section-header-done">DONE</div>
+                    <div class="section-header section-header-done">DONE — SEMUA STAFF</div>
                     <div class="job-grid">
                         <?php renderCards($done, 'done'); ?>
                     </div>
@@ -364,17 +384,11 @@ function renderCards(array $rows, string $mode = 'waiting') {
 
     <div id="processModal" class="modal-overlay">
         <div class="modal-box">
-            <h3>Verifikasi QC Staff</h3>
+            <h3>Pilih Mesin QC</h3>
             <p id="modalOrderText">Order: -</p>
 
             <form action="process_order.php" method="POST">
                 <input type="hidden" name="order_id" id="modal_order_id">
-
-                <label>NIK QC</label>
-                <input type="text" name="nik" required>
-
-                <label>Password</label>
-                <input type="password" name="password" required>
 
                 <label>Pilih Mesin QC</label>
                 <select name="qc_machine" required>
