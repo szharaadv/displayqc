@@ -988,7 +988,7 @@ new Chart(document.getElementById('chartHarian'), {
     }, 30000);
 
     // Auto scroll pelan-pelan terus menerus
-    let scrollSpeed = 0.4;
+    let scrollSpeed = 0.5; // pixel per frame
     let scrolling   = true;
 
     function autoScroll() {

@@ -696,7 +696,7 @@ function ratioLabel(float $r): string {
 
 <script>
     // Auto scroll pelan-pelan
-    let scrollSpeed = 0.4;
+    let scrollSpeed = 0.5; // pixel per frame
     let scrolling   = true;
 
     function autoScroll() {
