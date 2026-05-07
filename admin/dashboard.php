@@ -898,6 +898,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                             </div>
                             <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
                         </div>
+                        <!-- debug: total_detik = <?php echo $d['total_detik']; ?> -->
                         <?php endforeach; ?>
                     </div>
                     <?php endforeach; ?>
