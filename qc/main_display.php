@@ -19,6 +19,47 @@ $section  = isset($_GET['section']) ? $_GET['section'] : 'job';
 $today    = date('Y-m-d');
 $user_id  = (int)$_SESSION['id'];
 
+// ── Personal Operation Ratio Hari Ini ────────────────────────────────────────
+$today_ratio_query = mysqli_query($conn, "
+    SELECT
+        MIN(sps.start_time) AS first_start,
+        SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_aktif
+    FROM sampling_process_steps sps
+    WHERE sps.qc_user_id = $user_id
+      AND DATE(sps.start_time) = '$today'
+      AND sps.status = 'done'
+      AND sps.end_time IS NOT NULL
+");
+$today_ratio = mysqli_fetch_assoc($today_ratio_query);
+
+$first_start  = $today_ratio['first_start'] ?? null;
+$total_aktif  = (int)($today_ratio['total_aktif'] ?? 0);
+
+// Deteksi shift dari jam mulai pertama
+$shift_nama   = '-';
+$shift_detik  = 28800;
+if ($first_start) {
+    $h   = (int)date('H', strtotime($first_start));
+    $m   = (int)date('i', strtotime($first_start));
+    $tot = $h * 60 + $m;
+    if ($tot >= 390 && $tot < 915) {
+        $shift_nama  = 'Shift 1';
+        $shift_detik = 28800;
+    } elseif ($tot >= 915 && $tot < 1380) {
+        $shift_nama  = 'Shift 2';
+        $shift_detik = 27000;
+    } else {
+        $shift_nama  = 'Shift 3';
+        $shift_detik = 24300;
+    }
+}
+
+$ratio_personal = $shift_detik > 0 ? min(100, round(($total_aktif / $shift_detik) * 100, 1)) : 0;
+$aktif_jam      = floor($total_aktif / 3600);
+$aktif_mnt      = floor(($total_aktif % 3600) / 60);
+$mulai_jam      = $first_start ? date('H:i', strtotime($first_start)) : '-';
+// ─────────────────────────────────────────────────────────────────────────────
+
 $subquery = "
     SELECT
         so.id,
@@ -316,14 +357,23 @@ function renderCards(array $rows, string $mode = 'waiting') {
 </head>
 <body class="main-display-body">
     <div class="main-display-topbar">
-        <div class="main-display-title">QC SAMPLING DISPLAY</div>
-        <div class="main-display-info">
-            <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
-            Tanggal : <strong><?php echo $date_now; ?></strong> |
-            Processing : <strong><?php echo $total_processing; ?></strong> |
-            Done : <strong><?php echo $total_done; ?></strong>
-        </div>
+    <div class="main-display-title">QC SAMPLING DISPLAY</div>
+    <div class="main-display-info">
+        <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
+        Tanggal : <strong><?php echo $date_now; ?></strong> |
+        Processing : <strong><?php echo $total_processing; ?></strong> |
+        Done : <strong><?php echo $total_done; ?></strong>
+        <?php if ($first_start): ?>
+        &nbsp;|&nbsp;
+        <?php echo $shift_nama; ?> |
+        Mulai: <strong><?php echo $mulai_jam; ?></strong> |
+        Aktif: <strong><?php echo "{$aktif_jam}j {$aktif_mnt}m"; ?></strong> |
+        Ratio: <strong style="color:<?php echo $ratio_personal >= 80 ? '#059669' : ($ratio_personal >= 50 ? '#f59e0b' : '#CC0000'); ?>">
+            <?php echo $ratio_personal; ?>%
+        </strong>
+        <?php endif; ?>
     </div>
+</div>
 
     <div class="main-display-layout">
         <aside class="main-display-sidebar">
