@@ -628,13 +628,13 @@ function ratioLabel($r) {
                 <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($detail_rows); ?> records</span>
             </div>
 
-            <div class="table-card">
-                <?php if (empty($detail_rows)): ?>
-                    <div class="detail-empty">Belum ada data step pada periode ini.</div>
-                <?php else: ?>
-                <table class="dash-table">
-                    <thead>
-                        <tr>
+            <div class="table-card" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+                    <?php if (empty($detail_rows)): ?>
+                        <div class="detail-empty">Belum ada data step pada periode ini.</div>
+                    <?php else: ?>
+                    <table class="dash-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
                             <th>#</th>
                             <th>Tanggal</th>
                             <th>Staff</th>
