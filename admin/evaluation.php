@@ -10,16 +10,14 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-// Filter defaults: bulan & tahun ini
 $sel_month = isset($_GET['month']) && $_GET['month'] !== '' ? (int)$_GET['month'] : (int)date('m');
 $sel_year  = isset($_GET['year'])  && $_GET['year']  !== '' ? (int)$_GET['year']  : (int)date('Y');
 $sel_nik   = isset($_GET['nik'])   ? $_GET['nik'] : 'all';
 
 $month_pad  = str_pad($sel_month, 2, '0', STR_PAD_LEFT);
 $date_from  = "{$sel_year}-{$month_pad}-01";
-$date_to    = date('Y-m-t', strtotime($date_from)); // last day of month
+$date_to    = date('Y-m-t', strtotime($date_from));
 
-// Staff list
 $staffList = [];
 $staffQuery = mysqli_query($conn, "SELECT id, nik, nama FROM users WHERE role = 'qc' ORDER BY nama ASC");
 while ($s = mysqli_fetch_assoc($staffQuery)) $staffList[] = $s;
@@ -113,6 +111,35 @@ if ($sel_nik !== 'all') {
     $ratio_data = array_values($ratio_by_staff);
 }
 
+// ── Cycle Time per Order ─────────────────────────────────────────────────────
+$cycleQuery = mysqli_query($conn, "
+    SELECT
+        so.order_code,
+        so.id AS order_id,
+        mp.part_name,
+        mp.part_no,
+        u.nama AS qc_nama,
+        u.nik  AS qc_nik,
+        DATE(MIN(sps.start_time)) AS tgl,
+        MIN(sps.start_time) AS mulai,
+        MAX(sps.end_time)   AS selesai,
+        TIMESTAMPDIFF(SECOND, MIN(sps.start_time), MAX(sps.end_time)) AS cycle_time_detik,
+        SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time))      AS aktif_detik
+    FROM sampling_orders so
+    JOIN sampling_process_steps sps ON sps.order_id = so.id
+    JOIN master_parts mp ON so.part_id = mp.id
+    JOIN users u ON sps.qc_user_id = u.id
+    WHERE so.status = 'done'
+      AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+      AND sps.status IN ('done', 'paused')
+      AND sps.end_time IS NOT NULL
+      $whereNik
+    GROUP BY so.id, so.order_code, mp.part_name, mp.part_no, u.nama, u.nik
+    ORDER BY mulai DESC
+");
+$cycle_rows = [];
+while ($row = mysqli_fetch_assoc($cycleQuery)) $cycle_rows[] = $row;
+
 // ── Detail Step List ─────────────────────────────────────────────────────────
 $detailQuery = mysqli_query($conn, "
     SELECT
@@ -140,7 +167,6 @@ $detailQuery = mysqli_query($conn, "
 $detail_rows = [];
 while ($row = mysqli_fetch_assoc($detailQuery)) $detail_rows[] = $row;
 
-// Summary totals
 $total_step_all  = array_sum(array_column($summary_data, 'total_step'));
 $total_order_all = array_sum(array_column($summary_data, 'total_order'));
 $active_staff    = count(array_filter($summary_data, fn($s) => $s['total_step'] > 0));
@@ -158,6 +184,15 @@ function ratioLabel(float $r): string {
     if ($r >= 80) return '🟢 Produktif';
     if ($r >= 50) return '🟡 Normal';
     return '🔴 Perhatian';
+}
+
+function fmtTime(int $sec): string {
+    $h = floor($sec / 3600);
+    $m = floor(($sec % 3600) / 60);
+    $s = $sec % 60;
+    if ($h > 0) return "{$h}j {$m}m {$s}s";
+    if ($m > 0) return "{$m}m {$s}s";
+    return "{$s}s";
 }
 ?>
 <!DOCTYPE html>
@@ -193,25 +228,9 @@ function ratioLabel(float $r): string {
             --shadow-md: 0 4px 20px rgba(0,0,0,0.09);
         }
 
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-        }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
 
-        /* SIDEBAR */
-        .sidebar {
-            width: var(--sidebar-w);
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0; left: 0; bottom: 0;
-            z-index: 200;
-        }
+        .sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 200; }
         .sidebar-logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
         .sidebar-logo-badge { display: inline-flex; align-items: center; gap: 8px; }
         .logo-icon { width: 32px; height: 32px; background: var(--red); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
@@ -219,7 +238,6 @@ function ratioLabel(float $r): string {
         .logo-text { display: flex; flex-direction: column; }
         .logo-name { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
         .logo-sub  { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-
         .sidebar-nav { padding: 16px 12px; flex: 1; }
         .nav-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 8px; margin-bottom: 8px; margin-top: 16px; }
         .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text2); text-decoration: none; transition: background 0.12s, color 0.12s; cursor: pointer; margin-bottom: 2px; }
@@ -227,7 +245,6 @@ function ratioLabel(float $r): string {
         .nav-item.active { background: var(--red-soft); color: var(--red); }
         .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
         .nav-item.active svg { stroke: var(--red); }
-
         .sidebar-footer { padding: 16px 12px; border-top: 1px solid var(--border); }
         .user-card { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-sm); background: var(--surface2); }
         .user-avatar { width: 32px; height: 32px; background: var(--red); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
@@ -237,18 +254,12 @@ function ratioLabel(float $r): string {
         .btn-logout-sm { font-size: 10px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--red-mid); background: var(--red-soft); color: var(--red); text-decoration: none; font-weight: 600; white-space: nowrap; }
         .btn-logout-sm:hover { background: var(--red-mid); }
 
-        /* MAIN */
         .main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
         .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
         .topbar-title { font-size: 15px; font-weight: 700; color: var(--text); }
         .topbar-date  { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .content {
-            padding: 24px 28px;
-            height: calc(100vh - 56px);
-            overflow-y: auto;
-        }
+        .content { padding: 24px 28px; height: calc(100vh - 56px); overflow-y: auto; }
 
-        /* FILTER */
         .filter-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 22px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; box-shadow: var(--shadow); }
         .filter-group { display: flex; flex-direction: column; gap: 5px; }
         .filter-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
@@ -257,7 +268,6 @@ function ratioLabel(float $r): string {
         .btn-filter { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 600; padding: 8px 20px; border-radius: var(--radius-sm); border: none; background: var(--red); color: #fff; cursor: pointer; }
         .btn-filter:hover { background: var(--red-dark); }
 
-        /* SUMMARY CARDS */
         .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
         .summary-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 20px; position: relative; overflow: hidden; box-shadow: var(--shadow); }
         .summary-card.accent { background: var(--red); border-color: var(--red); }
@@ -265,14 +275,10 @@ function ratioLabel(float $r): string {
         .summary-card.accent .summary-card-bar { background: rgba(255,255,255,0.3); }
         .summary-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
         .summary-icon svg { width: 18px; height: 18px; }
-        .icon-white { background: rgba(255,255,255,0.2); }
-        .icon-white svg { stroke: #fff; }
-        .icon-green { background: var(--green-soft); }
-        .icon-green svg { stroke: var(--green); }
-        .icon-blue  { background: var(--blue-soft); }
-        .icon-blue  svg { stroke: var(--blue); }
-        .icon-gray  { background: var(--surface2); }
-        .icon-gray  svg { stroke: var(--text2); }
+        .icon-white { background: rgba(255,255,255,0.2); } .icon-white svg { stroke: #fff; }
+        .icon-green { background: var(--green-soft); }     .icon-green svg { stroke: var(--green); }
+        .icon-blue  { background: var(--blue-soft); }      .icon-blue  svg { stroke: var(--blue); }
+        .icon-gray  { background: var(--surface2); }       .icon-gray  svg { stroke: var(--text2); }
         .summary-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); margin-bottom: 4px; }
         .summary-card.accent .summary-label { color: rgba(255,255,255,0.75); }
         .summary-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
@@ -280,24 +286,17 @@ function ratioLabel(float $r): string {
         .summary-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
         .summary-card.accent .summary-sub { color: rgba(255,255,255,0.6); }
 
-        /* SECTION HEAD */
         .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
         .section-head-line { width: 3px; height: 16px; background: var(--red); border-radius: 2px; }
         .section-head-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
 
-        /* OPERATION RATIO */
         .ratio-section { margin-bottom: 28px; }
-        .ratio-table-wrap { overflow-x: auto; }
         .ratio-bar-wrap { display: flex; align-items: center; gap: 8px; }
         .ratio-bar-bg { flex: 1; height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
         .ratio-bar-fill { height: 100%; border-radius: 99px; transition: width 0.4s; }
-        .ratio-high  { background: var(--green); }
-        .ratio-mid   { background: #f59e0b; }
-        .ratio-low   { background: var(--red); }
+        .ratio-high { background: var(--green); } .ratio-mid { background: #f59e0b; } .ratio-low { background: var(--red); }
         .ratio-val { font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; min-width: 38px; text-align: right; }
-        .ratio-val.high { color: var(--green); }
-        .ratio-val.mid  { color: #f59e0b; }
-        .ratio-val.low  { color: var(--red); }
+        .ratio-val.high { color: var(--green); } .ratio-val.mid { color: #f59e0b; } .ratio-val.low { color: var(--red); }
         .ratio-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
         .ratio-badge.high { background: var(--green-soft); color: var(--green); }
         .ratio-badge.mid  { background: #fef3c7; color: #b45309; }
@@ -311,7 +310,6 @@ function ratioLabel(float $r): string {
         .ratio-day-label { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; min-width: 80px; }
         .ratio-grid-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 
-        /* SUMMARY PER STAFF TABLE */
         .table-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); margin-bottom: 22px; }
         .table-head-bar { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border); justify-content: space-between; }
         .dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -324,8 +322,8 @@ function ratioLabel(float $r): string {
         .pill-green { background: var(--green-soft); color: var(--green); }
         .pill-red   { background: var(--red-soft);   color: var(--red); }
         .pill-gray  { background: var(--surface2);   color: var(--text3); }
+        .pill-blue  { background: var(--blue-soft);  color: var(--blue); }
 
-        /* DETAIL LIST */
         .detail-section { margin-bottom: 28px; }
         .detail-empty { padding: 32px; text-align: center; color: var(--text3); font-size: 13px; }
         .mesin-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; background: var(--blue-soft); color: var(--blue); }
@@ -336,11 +334,13 @@ function ratioLabel(float $r): string {
         .mesin-badge.profil   { background: var(--blue-soft); color: var(--blue); }
         .mesin-badge.manual   { background: var(--surface2); color: var(--text2); }
         .mesin-badge.hardness { background: #ffedd5; color: #c2410c; }
+
+        .cycle-efficiency-bar { height: 4px; border-radius: 99px; background: var(--surface2); overflow: hidden; margin-top: 4px; }
+        .cycle-efficiency-fill { height: 100%; border-radius: 99px; background: var(--green); }
     </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
 <aside class="sidebar">
     <div class="sidebar-logo">
         <div class="sidebar-logo-badge">
@@ -353,7 +353,6 @@ function ratioLabel(float $r): string {
             </div>
         </div>
     </div>
-
     <nav class="sidebar-nav">
         <div class="nav-label">Menu</div>
         <a class="nav-item" href="dashboard.php">
@@ -372,13 +371,14 @@ function ratioLabel(float $r): string {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
             Main Menu
         </a>
+        <a class="nav-item" href="cycle_time.php">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+            Cycle Time
+        </a>
     </nav>
-
     <div class="sidebar-footer">
         <div class="user-card">
-            <div class="user-avatar">
-                <?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?>
-            </div>
+            <div class="user-avatar"><?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?></div>
             <div class="user-info">
                 <div class="user-name"><?php echo isset($_SESSION['nama']) ? htmlspecialchars($_SESSION['nama']) : 'Admin'; ?></div>
                 <div class="user-role">Manager</div>
@@ -388,7 +388,6 @@ function ratioLabel(float $r): string {
     </div>
 </aside>
 
-<!-- MAIN -->
 <div class="main">
     <div class="topbar">
         <div class="topbar-title">Evaluation — <?php echo $period_label; ?></div>
@@ -404,9 +403,7 @@ function ratioLabel(float $r): string {
                 <select name="month" class="filter-input">
                     <?php foreach ($month_names as $num => $name):
                         if ($num === 0) continue; ?>
-                    <option value="<?php echo $num; ?>" <?php echo $sel_month === $num ? 'selected' : ''; ?>>
-                        <?php echo $name; ?>
-                    </option>
+                    <option value="<?php echo $num; ?>" <?php echo $sel_month === $num ? 'selected' : ''; ?>><?php echo $name; ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -414,9 +411,7 @@ function ratioLabel(float $r): string {
                 <label class="filter-label">Tahun</label>
                 <select name="year" class="filter-input">
                     <?php for ($y = (int)date('Y'); $y >= 2024; $y--): ?>
-                    <option value="<?php echo $y; ?>" <?php echo $sel_year === $y ? 'selected' : ''; ?>>
-                        <?php echo $y; ?>
-                    </option>
+                    <option value="<?php echo $y; ?>" <?php echo $sel_year === $y ? 'selected' : ''; ?>><?php echo $y; ?></option>
                     <?php endfor; ?>
                 </select>
             </div>
@@ -438,36 +433,28 @@ function ratioLabel(float $r): string {
         <div class="summary-grid">
             <div class="summary-card accent">
                 <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-white">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                </div>
+                <div class="summary-icon icon-white"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
                 <div class="summary-label">Total Step</div>
                 <div class="summary-value"><?php echo $total_step_all; ?></div>
                 <div class="summary-sub"><?php echo $period_label; ?></div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-green">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                </div>
+                <div class="summary-icon icon-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
                 <div class="summary-label">Total Order</div>
                 <div class="summary-value"><?php echo $total_order_all; ?></div>
                 <div class="summary-sub">Selesai</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-blue">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-                </div>
+                <div class="summary-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
                 <div class="summary-label">Staff Aktif</div>
                 <div class="summary-value"><?php echo $active_staff; ?></div>
                 <div class="summary-sub">dari <?php echo count($summary_data); ?> staff</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
-                <div class="summary-icon icon-gray">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
-                </div>
+                <div class="summary-icon icon-gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div>
                 <div class="summary-label">Top Performer</div>
                 <div class="summary-value" style="font-size:16px;padding-top:6px;line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
                 <div class="summary-sub">Step terbanyak</div>
@@ -490,22 +477,13 @@ function ratioLabel(float $r): string {
                 <?php if (empty($ratio_data)): ?>
                     <p style="color:var(--text3);font-size:13px;margin-bottom:22px;">Belum ada data operation ratio pada periode ini.</p>
                 <?php else: ?>
-                <div class="table-card ratio-table-wrap">
+                <div class="table-card">
                     <div class="table-head-bar">
                         <div class="section-head-line"></div>
-                        <div class="section-head-title" style="margin:0;">
-                            <?php echo htmlspecialchars($summary_data[0]['nama'] ?? ''); ?> — Ratio per Hari
-                        </div>
+                        <div class="section-head-title" style="margin:0;"><?php echo htmlspecialchars($summary_data[0]['nama'] ?? ''); ?> — Ratio per Hari</div>
                     </div>
                     <table class="dash-table">
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Waktu Aktif</th>
-                                <th style="min-width:200px;">Operation Ratio</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
+                        <thead><tr><th>Tanggal</th><th>Waktu Aktif</th><th style="min-width:200px;">Operation Ratio</th><th>Status</th></tr></thead>
                         <tbody>
                             <?php foreach ($ratio_data as $rd):
                                 $cls = ratioClass($rd['ratio']);
@@ -517,9 +495,7 @@ function ratioLabel(float $r): string {
                                 <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
-                                        <div class="ratio-bar-bg">
-                                            <div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div>
-                                        </div>
+                                        <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
                                         <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
                                     </div>
                                 </td>
@@ -545,16 +521,12 @@ function ratioLabel(float $r): string {
                                 <div class="ratio-staff-nik"><?php echo $rs['nik']; ?></div>
                             </div>
                             <div style="text-align:right;">
-                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);">
-                                    <?php echo $rs['avg_ratio']; ?>%
-                                </div>
+                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);"><?php echo $rs['avg_ratio']; ?>%</div>
                                 <div style="font-size:10px;color:var(--text3);">avg ratio</div>
                             </div>
                         </div>
                         <div class="ratio-bar-wrap" style="margin-bottom:12px;">
-                            <div class="ratio-bar-bg" style="height:10px;">
-                                <div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div>
-                            </div>
+                            <div class="ratio-bar-bg" style="height:10px;"><div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div></div>
                         </div>
                         <?php foreach ($rs['days'] as $d):
                             $dcls = ratioClass($d['ratio']);
@@ -564,9 +536,7 @@ function ratioLabel(float $r): string {
                         <div class="ratio-day-row">
                             <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
                             <div class="ratio-bar-wrap" style="flex:1;">
-                                <div class="ratio-bar-bg">
-                                    <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
-                                </div>
+                                <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
                                 <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
                             </div>
                             <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
@@ -580,7 +550,7 @@ function ratioLabel(float $r): string {
         </div>
 
         <!-- Summary per Staff -->
-         <div class="table-card" style="max-height: 350px; overflow-y: auto;">
+        <div class="table-card" style="max-height: 350px; overflow-y: auto;">
             <div class="table-head-bar" style="position: sticky; top: 0; z-index: 10; background: var(--surface);">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div class="section-head-line"></div>
@@ -591,17 +561,9 @@ function ratioLabel(float $r): string {
             <table class="dash-table">
                 <thead style="position: sticky; top: 57px; z-index: 9;">
                     <tr>
-                        <th>Nama</th>
-                        <th>NIK</th>
-                        <th>Order</th>
-                        <th>Step</th>
-                        <th>CMM</th>
-                        <th>RONDCOM</th>
-                        <th>ROUGHNESS</th>
-                        <th>CONTOUR</th>
-                        <th>PROFIL</th>
-                        <th>MANUAL</th>
-                        <th>HARDNESS</th>
+                        <th>Nama</th><th>NIK</th><th>Order</th><th>Step</th>
+                        <th>CMM</th><th>RONDCOM</th><th>ROUGHNESS</th><th>CONTOUR</th>
+                        <th>PROFIL</th><th>MANUAL</th><th>HARDNESS</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -624,6 +586,69 @@ function ratioLabel(float $r): string {
             </table>
         </div>
 
+        <!-- Cycle Time per Order -->
+        <div class="detail-section">
+            <div class="section-head">
+                <div class="section-head-line"></div>
+                <div class="section-head-title">Cycle Time per Order</div>
+                <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($cycle_rows); ?> order selesai</span>
+            </div>
+            <div class="table-card" style="max-height: 400px; overflow-y: auto;">
+                <?php if (empty($cycle_rows)): ?>
+                    <div class="detail-empty">Belum ada data cycle time pada periode ini.</div>
+                <?php else: ?>
+                <table class="dash-table">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th>#</th>
+                            <th>Tanggal</th>
+                            <th>Staff</th>
+                            <th>Order Code</th>
+                            <th>Part Name</th>
+                            <th>Mulai</th>
+                            <th>Selesai</th>
+                            <th>Cycle Time</th>
+                            <th>Waktu Aktif</th>
+                            <th>Efisiensi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($cycle_rows as $i => $cr):
+                            $cycle = (int)$cr['cycle_time_detik'];
+                            $aktif = (int)$cr['aktif_detik'];
+                            $efisiensi = $cycle > 0 ? min(100, round(($aktif / $cycle) * 100)) : 0;
+                            $ef_color = $efisiensi >= 80 ? 'var(--green)' : ($efisiensi >= 50 ? '#f59e0b' : 'var(--red)');
+                        ?>
+                        <tr>
+                            <td class="mono" style="color:var(--text3);"><?php echo $i + 1; ?></td>
+                            <td class="mono"><?php echo $cr['tgl']; ?></td>
+                            <td>
+                                <strong><?php echo htmlspecialchars($cr['qc_nama']); ?></strong>
+                                <div style="font-size:10px;color:var(--text3);"><?php echo $cr['qc_nik']; ?></div>
+                            </td>
+                            <td class="mono" style="font-size:11px;"><?php echo htmlspecialchars($cr['order_code']); ?></td>
+                            <td>
+                                <?php echo htmlspecialchars($cr['part_name']); ?>
+                                <div style="font-size:10px;color:var(--text3);"><?php echo htmlspecialchars($cr['part_no']); ?></div>
+                            </td>
+                            <td class="mono" style="font-size:11px;"><?php echo date('H:i', strtotime($cr['mulai'])); ?></td>
+                            <td class="mono" style="font-size:11px;"><?php echo date('H:i', strtotime($cr['selesai'])); ?></td>
+                            <td class="mono"><span class="pill pill-blue"><?php echo fmtTime($cycle); ?></span></td>
+                            <td class="mono"><?php echo fmtTime($aktif); ?></td>
+                            <td>
+                                <div style="font-size:11px;font-weight:700;color:<?php echo $ef_color; ?>"><?php echo $efisiensi; ?>%</div>
+                                <div class="cycle-efficiency-bar">
+                                    <div class="cycle-efficiency-fill" style="width:<?php echo $efisiensi; ?>%;background:<?php echo $ef_color; ?>;"></div>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+            </div>
+        </div>
+
         <!-- Detail Step List -->
         <div class="detail-section">
             <div class="section-head">
@@ -631,29 +656,21 @@ function ratioLabel(float $r): string {
                 <div class="section-head-title">Detail Step</div>
                 <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($detail_rows); ?> records</span>
             </div>
-
             <div class="table-card" style="max-height: calc(100vh - 200px); overflow-y: auto;">
-                    <?php if (empty($detail_rows)): ?>
-                        <div class="detail-empty">Belum ada data step pada periode ini.</div>
-                    <?php else: ?>
-                    <table class="dash-table">
-                        <thead style="position: sticky; top: 0; z-index: 10;">
-                            <tr>
-                            <th>#</th>
-                            <th>Tanggal</th>
-                            <th>Staff</th>
-                            <th>Order Code</th>
-                            <th>Part Name</th>
-                            <th>Part No</th>
-                            <th>Mesin QC</th>
-                            <th>Start</th>
-                            <th>End</th>
-                            <th>Durasi</th>
+                <?php if (empty($detail_rows)): ?>
+                    <div class="detail-empty">Belum ada data step pada periode ini.</div>
+                <?php else: ?>
+                <table class="dash-table">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th>#</th><th>Tanggal</th><th>Staff</th><th>Order Code</th>
+                            <th>Part Name</th><th>Part No</th><th>Mesin QC</th>
+                            <th>Start</th><th>End</th><th>Durasi</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($detail_rows as $i => $d):
-                            $dur = (int)$d['durasi_detik'];
+                            $dur   = (int)$d['durasi_detik'];
                             $dur_m = floor($dur / 60);
                             $dur_s = $dur % 60;
                             $mesin_key = strtolower(str_replace([' ', '/'], '', $d['qc_machine']));
@@ -695,36 +712,32 @@ function ratioLabel(float $r): string {
 </div>
 
 <script>
-    // Auto scroll pelan-pelan
-        let scrollSpeed = 0.3;
-        let scrolling   = true;
-        let scrollPos   = 0;
+    let scrollSpeed = 0.3;
+    let scrolling   = true;
+    let scrollPos   = 0;
 
-        function autoScroll() {
-            if (!scrolling) return;
-            const content = document.querySelector('.content');
-            if (!content) return;
-
-            scrollPos += scrollSpeed;
-
-            if (scrollPos + content.clientHeight >= content.scrollHeight - 5) {
-                scrollPos = 0;
-            }
-
-            content.scrollTop = scrollPos;
-            requestAnimationFrame(autoScroll);
+    function autoScroll() {
+        if (!scrolling) return;
+        const content = document.querySelector('.content');
+        if (!content) return;
+        scrollPos += scrollSpeed;
+        if (scrollPos + content.clientHeight >= content.scrollHeight - 5) {
+            scrollPos = 0;
         }
+        content.scrollTop = scrollPos;
+        requestAnimationFrame(autoScroll);
+    }
 
-        const contentEl = document.querySelector('.content');
-        if (contentEl) {
-            scrollPos = contentEl.scrollTop;
-            contentEl.addEventListener('mouseenter', () => scrolling = false);
-            contentEl.addEventListener('mouseleave', () => {
-                scrolling = true;
-                autoScroll();
-            });
+    const contentEl = document.querySelector('.content');
+    if (contentEl) {
+        scrollPos = contentEl.scrollTop;
+        contentEl.addEventListener('mouseenter', () => scrolling = false);
+        contentEl.addEventListener('mouseleave', () => {
+            scrolling = true;
             autoScroll();
-        }
+        });
+        autoScroll();
+    }
 </script>
 </body>
 </html>

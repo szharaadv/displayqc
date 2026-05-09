@@ -685,6 +685,10 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
             Main Menu
         </a>
+        <a class="nav-item" href="cycle_time.php">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+            Cycle Time
+        </a>
     </nav>
 
     <div class="sidebar-footer">
