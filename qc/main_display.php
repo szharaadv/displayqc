@@ -27,7 +27,7 @@ $today_ratio_query = mysqli_query($conn, "
     FROM sampling_process_steps sps
     WHERE sps.qc_user_id = $user_id
       AND DATE(sps.start_time) = '$today'
-      AND sps.status = 'done'
+      AND sps.status IN ('done', 'paused')
       AND sps.end_time IS NOT NULL
 ");
 $today_ratio = mysqli_fetch_assoc($today_ratio_query);
@@ -35,7 +35,6 @@ $today_ratio = mysqli_fetch_assoc($today_ratio_query);
 $first_start  = $today_ratio['first_start'] ?? null;
 $total_aktif  = (int)($today_ratio['total_aktif'] ?? 0);
 
-// Deteksi shift dari jam mulai pertama
 $shift_nama   = '-';
 $shift_detik  = 28800;
 if ($first_start) {
@@ -94,8 +93,20 @@ $subquery = "
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, s3.start_time, s3.end_time)), 0)
             FROM sampling_process_steps s3
             WHERE s3.order_id = so.id
-              AND s3.status = 'done'
+              AND s3.status IN ('done', 'paused')
         ) AS total_done_seconds,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, s6.start_time, s6.end_time)), 0)
+            FROM sampling_process_steps s6
+            WHERE s6.order_id = so.id
+              AND s6.qc_machine = (
+                  SELECT s7.qc_machine FROM sampling_process_steps s7
+                  WHERE s7.order_id = so.id
+                  ORDER BY s7.id DESC LIMIT 1
+              )
+              AND s6.status IN ('done', 'paused')
+        ) AS current_machine_done_seconds,
 
         (
             SELECT u.nama
@@ -106,6 +117,14 @@ $subquery = "
             LIMIT 1
         ) AS qc_nama,
 
+        (
+            SELECT s5.status
+            FROM sampling_process_steps s5
+            WHERE s5.order_id = so.id
+            ORDER BY s5.id DESC
+            LIMIT 1
+        ) AS last_step_status,
+
         MAX(CASE WHEN sps.qc_machine = 'CMM'              AND sps.status = 'done' THEN 1 ELSE 0 END) AS cmm_done,
         MAX(CASE WHEN sps.qc_machine = 'RONDCOM'          AND sps.status = 'done' THEN 1 ELSE 0 END) AS rondcom_done,
         MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS'        AND sps.status = 'done' THEN 1 ELSE 0 END) AS roughness_done,
@@ -114,13 +133,61 @@ $subquery = "
         MAX(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN 1 ELSE 0 END) AS manual_done,
         MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_check_done,
 
-        MAX(CASE WHEN sps.qc_machine = 'CMM'              AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS cmm_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'RONDCOM'          AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS rondcom_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'ROUGHNESS'        AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS roughness_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'CONTOUR'          AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS contour_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'PROFIL PROJECTOR' AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS profil_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'MANUAL'           AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS manual_durasi,
-        MAX(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) ELSE NULL END) AS hardness_durasi
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'CMM'
+            AND sps2.status IN ('done', 'paused')
+        ) AS cmm_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'RONDCOM'
+            AND sps2.status IN ('done', 'paused')
+        ) AS rondcom_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'ROUGHNESS'
+            AND sps2.status IN ('done', 'paused')
+        ) AS roughness_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'CONTOUR'
+            AND sps2.status IN ('done', 'paused')
+        ) AS contour_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'PROFIL PROJECTOR'
+            AND sps2.status IN ('done', 'paused')
+        ) AS profil_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'MANUAL'
+            AND sps2.status IN ('done', 'paused')
+        ) AS manual_durasi,
+
+        (
+            SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
+            FROM sampling_process_steps sps2
+            WHERE sps2.order_id = so.id
+            AND sps2.qc_machine = 'HARDNESS CHECK'
+            AND sps2.status IN ('done', 'paused')
+        ) AS hardness_durasi
 
     FROM sampling_orders so
     JOIN master_parts mp ON so.part_id = mp.id
@@ -185,31 +252,33 @@ function renderCards(array $rows, string $mode = 'waiting') {
     }
 
     foreach ($rows as $row) {
-        $elapsed = 0;
-        $doneSec = (int)($row['total_done_seconds'] ?? 0);
+        $doneSec            = (int)($row['total_done_seconds'] ?? 0);
+        $lastStatus         = $row['last_step_status'] ?? '';
+        $currentMachineDone = (int)($row['current_machine_done_seconds'] ?? 0);
 
+        $current_step = 0;
         if (!empty($row['start_time'])) {
-            $startDt = new DateTime($row['start_time'], $tz);
-            $nowDt   = new DateTime('now', $tz);
-            $current = $nowDt->getTimestamp() - $startDt->getTimestamp();
-            if ($current < 0) $current = 0;
-            $elapsed = $current + $doneSec;
-        } else {
-            $elapsed = $doneSec;
+            $startDt      = new DateTime($row['start_time'], $tz);
+            $nowDt        = new DateTime('now', $tz);
+            $current_step = $nowDt->getTimestamp() - $startDt->getTimestamp();
+            if ($current_step < 0) $current_step = 0;
         }
+
+        $elapsed = $current_step + $doneSec;
 
         if ($mode === 'done') {
             $progressValue = 100;
         } elseif ($mode === 'progress' && !empty($row['start_time'])) {
             $progressValue = min(100, floor(($elapsed / 3600) * 100));
         } else {
-            $progressValue = 0;
+            $progressValue = min(100, floor(($doneSec / 3600) * 100));
         }
 
-        $hours     = floor($elapsed / 3600);
-        $minutes   = floor(($elapsed % 3600) / 60);
-        $seconds   = $elapsed % 60;
-        $timerText = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+        $timer_sec    = $currentMachineDone + $current_step;
+        $hours_step   = floor($timer_sec / 3600);
+        $minutes_step = floor(($timer_sec % 3600) / 60);
+        $seconds_step = $timer_sec % 60;
+        $timerText    = sprintf('%02d:%02d:%02d', $hours_step, $minutes_step, $seconds_step);
 
         $mesin_map = [
             'CMM'              => ['done' => $row['cmm_done'],          'durasi' => $row['cmm_durasi']],
@@ -248,8 +317,8 @@ function renderCards(array $rows, string $mode = 'waiting') {
             </div>
 
             <?php foreach ($mesin_map as $nama => $val):
-                $isDone  = (int)$val['done'] === 1;
-                $durStr  = ($isDone && $val['durasi'] !== null) ? durStr((int)$val['durasi']) : '';
+                $isDone = (int)$val['done'] === 1;
+                $durStr = ($isDone && $val['durasi'] !== null) ? durStr((int)$val['durasi']) : '';
             ?>
             <div class="job-card-row">
                 <span><?php echo $nama; ?></span>
@@ -273,12 +342,12 @@ function renderCards(array $rows, string $mode = 'waiting') {
             </div>
             <?php endif; ?>
 
-            <?php if ($mode === 'progress' && !empty($row['start_time'])): ?>
+            <?php if ($mode === 'progress' && !empty($row['start_time']) && $lastStatus === 'in_progress'): ?>
             <div class="job-card-row">
                 <span>TIMER</span>
                 <strong class="live-timer"
                     data-start-time="<?php echo htmlspecialchars($row['start_time']); ?>"
-                    data-done-sec="<?php echo $doneSec; ?>">
+                    data-done-sec="<?php echo $currentMachineDone; ?>">
                     <?php echo $timerText; ?>
                 </strong>
             </div>
@@ -305,6 +374,37 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 </div>
             </div>
 
+            <?php if ($mode === 'progress'): ?>
+            <div style="text-align:right; margin: 8px 0 4px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06);">
+                <span style="font-size:10px;color:var(--text3);">Total waktu order</span><br>
+                <strong class="live-total-timer"
+                    style="font-size:18px;color:var(--red);font-family:'JetBrains Mono',monospace;"
+                    data-start-time="<?php echo !empty($row['start_time']) ? htmlspecialchars($row['start_time']) : ''; ?>"
+                    data-done-sec="<?php echo $doneSec; ?>">
+                    <?php
+                    $tot_h = floor($elapsed / 3600);
+                    $tot_m = floor(($elapsed % 3600) / 60);
+                    $tot_s = $elapsed % 60;
+                    echo sprintf('%02d:%02d:%02d', $tot_h, $tot_m, $tot_s);
+                    ?>
+                </strong>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($mode === 'done' && $doneSec > 0): ?>
+            <div style="text-align:right; margin: 8px 0 4px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06);">
+                <span style="font-size:10px;color:var(--text3);">Total waktu order</span><br>
+                <strong style="font-size:18px;color:var(--red);font-family:'JetBrains Mono',monospace;">
+                    <?php
+                    $tot_h = floor($doneSec / 3600);
+                    $tot_m = floor(($doneSec % 3600) / 60);
+                    $tot_s = $doneSec % 60;
+                    echo sprintf('%02d:%02d:%02d', $tot_h, $tot_m, $tot_s);
+                    ?>
+                </strong>
+            </div>
+            <?php endif; ?>
+
             <?php if ($mode === 'waiting'): ?>
                 <button type="button"
                     class="job-btn job-btn-process open-process-modal"
@@ -314,10 +414,19 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 </button>
 
             <?php elseif ($mode === 'progress'): ?>
-                <?php if (!empty($row['start_time'])): ?>
-                <a href="finish_order.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-progress">
-                    SELESAIKAN STEP
-                </a>
+                <?php if ($lastStatus === 'paused'): ?>
+                    <a href="pause_order.php?resume=1&id=<?php echo $row['id']; ?>"
+                        class="job-btn" style="background:#059669;color:#fff;">
+                        ▶ RESUME
+                    </a>
+                <?php elseif (!empty($row['start_time'])): ?>
+                    <a href="finish_order.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-progress">
+                        SELESAIKAN STEP
+                    </a>
+                    <a href="pause_order.php?id=<?php echo $row['id']; ?>" class="job-btn"
+                        style="margin-top:8px;background:#f59e0b;color:#fff;">
+                        ⏸ PAUSE
+                    </a>
                 <?php endif; ?>
 
                 <button type="button"
@@ -347,33 +456,31 @@ function renderCards(array $rows, string $mode = 'waiting') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Main Display QC</title>
     <link rel="stylesheet" href="../assets/style.css?v=22">
-
     <script>
-    const serverTime = new Date("<?php echo date('Y-m-d H:i:s'); ?>");
+    const serverTime = new Date("<?php echo date('Y-m-d H:i:s'); ?>".replace(' ', 'T'));
     const clientTime = new Date();
-    const timeDiff   = clientTime - serverTime; // selisih ms
+    const timeDiff   = clientTime - serverTime;
     </script>
-
 </head>
 <body class="main-display-body">
     <div class="main-display-topbar">
-    <div class="main-display-title">QC SAMPLING DISPLAY</div>
-    <div class="main-display-info">
-        <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
-        Tanggal : <strong><?php echo $date_now; ?></strong> |
-        Processing : <strong><?php echo $total_processing; ?></strong> |
-        Done : <strong><?php echo $total_done; ?></strong>
-        <?php if ($first_start): ?>
-        &nbsp;|&nbsp;
-        <?php echo $shift_nama; ?> |
-        Mulai: <strong><?php echo $mulai_jam; ?></strong> |
-        Aktif: <strong><?php echo "{$aktif_jam}j {$aktif_mnt}m"; ?></strong> |
-        Ratio: <strong style="color:<?php echo $ratio_personal >= 80 ? '#059669' : ($ratio_personal >= 50 ? '#f59e0b' : '#CC0000'); ?>">
-            <?php echo $ratio_personal; ?>%
-        </strong>
-        <?php endif; ?>
+        <div class="main-display-title">QC SAMPLING DISPLAY</div>
+        <div class="main-display-info">
+            <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
+            Tanggal : <strong><?php echo $date_now; ?></strong> |
+            Processing : <strong><?php echo $total_processing; ?></strong> |
+            Done : <strong><?php echo $total_done; ?></strong>
+            <?php if ($first_start): ?>
+            &nbsp;|&nbsp;
+            <?php echo $shift_nama; ?> |
+            Mulai: <strong><?php echo $mulai_jam; ?></strong> |
+            Aktif: <strong><?php echo "{$aktif_jam}j {$aktif_mnt}m"; ?></strong> |
+            Ratio: <strong style="color:<?php echo $ratio_personal >= 80 ? '#059669' : ($ratio_personal >= 50 ? '#f59e0b' : '#CC0000'); ?>">
+                <?php echo $ratio_personal; ?>%
+            </strong>
+            <?php endif; ?>
+        </div>
     </div>
-</div>
 
     <div class="main-display-layout">
         <aside class="main-display-sidebar">
@@ -412,6 +519,12 @@ function renderCards(array $rows, string $mode = 'waiting') {
             <?php endif; ?>
             <?php if (isset($_GET['already_progress'])): ?>
                 <p class="error">Mesin itu sedang dikerjakan untuk order ini.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['pause_success'])): ?>
+                <p class="success">Order berhasil di-pause.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['resume_success'])): ?>
+                <p class="success">Order berhasil di-resume.</p>
             <?php endif; ?>
 
             <?php if ($section === 'job'): ?>
@@ -494,6 +607,7 @@ function renderCards(array $rows, string $mode = 'waiting') {
             const now = new Date(new Date() - timeDiff);
 
             document.querySelectorAll('.live-timer').forEach(el => {
+                if (!el.dataset.startTime) return;
                 const start   = new Date(el.dataset.startTime.replace(' ', 'T'));
                 const doneSec = parseInt(el.dataset.doneSec) || 0;
                 let current   = Math.floor((now - start) / 1000);
@@ -522,6 +636,18 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 el.style.width = progress + '%';
                 el.classList.remove('progress-low', 'progress-mid', 'progress-high');
                 el.classList.add(progress <= 30 ? 'progress-low' : progress <= 70 ? 'progress-mid' : 'progress-high');
+            });
+
+            document.querySelectorAll('.live-total-timer').forEach(el => {
+                const doneSec = parseInt(el.dataset.doneSec) || 0;
+                if (!el.dataset.startTime || el.dataset.startTime === '') {
+                    el.textContent = formatTime(doneSec);
+                    return;
+                }
+                const start = new Date(el.dataset.startTime.replace(' ', 'T'));
+                let current = Math.floor((now - start) / 1000);
+                if (current < 0) current = 0;
+                el.textContent = formatTime(current + doneSec);
             });
         }
 
