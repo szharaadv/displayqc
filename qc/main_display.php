@@ -19,6 +19,19 @@ $section  = isset($_GET['section']) ? $_GET['section'] : 'job';
 $today    = date('Y-m-d');
 $user_id  = (int)$_SESSION['id'];
 
+// ── Deteksi tanggal shift ─────────────────────────────────────────────────────
+$now_h   = (int)date('H');
+$now_m   = (int)date('i');
+$now_tot = $now_h * 60 + $now_m;
+
+// Jam 00:00 - 06:29 → masih shift 3, pakai tanggal kemarin
+if ($now_tot < 390) {
+    $shift_date = date('Y-m-d', strtotime('-1 day'));
+} else {
+    $shift_date = date('Y-m-d');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Personal Operation Ratio Hari Ini ────────────────────────────────────────
 $today_ratio_query = mysqli_query($conn, "
     SELECT
@@ -26,7 +39,7 @@ $today_ratio_query = mysqli_query($conn, "
         SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_aktif
     FROM sampling_process_steps sps
     WHERE sps.qc_user_id = $user_id
-      AND DATE(sps.start_time) = '$today'
+      AND DATE(sps.start_time) = '$shift_date'
       AND sps.status IN ('done', 'paused')
       AND sps.end_time IS NOT NULL
 ");
@@ -196,18 +209,21 @@ $subquery = "
     LEFT JOIN sampling_process_steps sps ON sps.order_id = so.id
 ";
 
+// Query waiting & in_progress — pakai shift_date
 $query_mine = mysqli_query($conn, $subquery . "
     WHERE so.created_by = $user_id
       AND so.status IN ('waiting', 'in_progress', 'partial_done')
+      AND DATE(so.created_at) = '$shift_date'
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
     ORDER BY so.id DESC
 ");
 
+// Query done — pakai shift_date
 $query_done = mysqli_query($conn, $subquery . "
     WHERE so.status = 'done'
-      AND DATE(so.created_at) = '$today'
+      AND DATE(so.created_at) = '$shift_date'
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
@@ -467,7 +483,7 @@ function renderCards(array $rows, string $mode = 'waiting') {
         <div class="main-display-title">QC SAMPLING DISPLAY</div>
         <div class="main-display-info">
             <strong><?php echo htmlspecialchars($nama_login); ?></strong> |
-            Tanggal : <strong><?php echo $date_now; ?></strong> |
+            Tanggal : <strong><?php echo date('d F Y', strtotime($shift_date)); ?></strong> |
             Processing : <strong><?php echo $total_processing; ?></strong> |
             Done : <strong><?php echo $total_done; ?></strong>
             <?php if ($first_start): ?>
@@ -654,6 +670,55 @@ function renderCards(array $rows, string $mode = 'waiting') {
         updateLiveProgress();
         setInterval(updateLiveProgress, 1000);
         setInterval(() => { if (modal.style.display !== 'flex') window.location.reload(); }, 60000);
+
+        // ── Notifikasi shift hampir habis ─────────────────────────────────────
+        function cekShift() {
+            const now  = new Date(new Date() - timeDiff);
+            const h    = now.getHours();
+            const m    = now.getMinutes();
+            const mnt  = h * 60 + m;
+
+            const batas = [
+                { nama: 'Shift 1', akhir: 15 * 60 + 15 },
+                { nama: 'Shift 2', akhir: 23 * 60 + 0  },
+                { nama: 'Shift 3', akhir: 6  * 60 + 30 },
+            ];
+
+            let notif = document.getElementById('shift-notif');
+
+            for (const shift of batas) {
+                let selisih = shift.akhir - mnt;
+                if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
+                    selisih = (shift.akhir + 24 * 60) - mnt;
+                }
+                if (selisih > 0 && selisih <= 15) {
+                    if (!notif) {
+                        notif = document.createElement('div');
+                        notif.id = 'shift-notif';
+                        notif.style.cssText = `
+                            position: fixed;
+                            top: 0; left: 0; right: 0;
+                            background: #f59e0b;
+                            color: #fff;
+                            text-align: center;
+                            padding: 12px;
+                            font-weight: 700;
+                            font-size: 14px;
+                            z-index: 9999;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                        `;
+                        document.body.prepend(notif);
+                    }
+                    notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
+                    return;
+                }
+            }
+            if (notif) notif.remove();
+        }
+
+        cekShift();
+        setInterval(cekShift, 60000);
+        // ─────────────────────────────────────────────────────────────────────
     </script>
 </body>
 </html>
