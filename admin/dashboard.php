@@ -41,8 +41,7 @@ $query = mysqli_query($conn, "
     FROM users u
     LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
         AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-        AND sps.status IN ('done', 'paused')
-        AND sps.end_time IS NOT NULL
+        AND sps.status = 'done'
     WHERE u.role = 'qc' AND u.status = 1
     GROUP BY u.id, u.nama, u.nik
     ORDER BY total_step DESC
@@ -61,8 +60,7 @@ if ($selected_nik !== 'all') {
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc2'
           AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status IN ('done', 'paused')
-        AND sps.end_time IS NOT NULL
+          AND sps.status = 'done'
         GROUP BY DATE(sps.created_at)
         ORDER BY tgl ASC
     ");
@@ -101,9 +99,8 @@ if ($selected_nik !== 'all') {
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
           AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status IN ('done', 'paused')
-            AND sps.end_time IS NOT NULL
-            ORDER BY sps.start_time ASC
+          AND sps.status = 'done'
+          AND sps.end_time IS NOT NULL
         ORDER BY sps.start_time ASC
     ");
 
@@ -143,7 +140,7 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = ('done', 'paused')
+          AND sps.status = 'done'
           AND sps.end_time IS NOT NULL
           $whereNik
         ORDER BY u.nama ASC, sps.start_time ASC
