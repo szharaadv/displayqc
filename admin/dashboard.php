@@ -11,19 +11,8 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$now_h   = (int)date('H');
-$now_m   = (int)date('i');
-$now_tot = $now_h * 60 + $now_m;
-
-// Jam 00:00-06:29 = masih shift 3, pakai tanggal kemarin
-if ($now_tot < 390) {
-    $date_from = date('Y-m-d', strtotime('-1 day'));
-    $date_to   = date('Y-m-d', strtotime('-1 day'));
-} else {
-    $date_from = date('Y-m-d');
-    $date_to   = date('Y-m-d');
-}
-
+$date_from    = date('Y-m-d');
+$date_to      = date('Y-m-d');
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
 $staffList = [];
