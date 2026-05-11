@@ -449,12 +449,18 @@ function renderCards(array $rows, string $mode = 'waiting') {
             <?php endif; ?>
 
             <?php if ($mode === 'waiting'): ?>
-                <button type="button"
-                    class="job-btn job-btn-process open-process-modal"
-                    data-order-id="<?php echo $row['id']; ?>"
-                    data-order-code="<?php echo htmlspecialchars($row['order_code']); ?>">
-                    PROCESS
-                </button>
+            <button type="button"
+                class="job-btn job-btn-process open-process-modal"
+                data-order-id="<?php echo $row['id']; ?>"
+                data-order-code="<?php echo htmlspecialchars($row['order_code']); ?>">
+                PROCESS
+            </button>
+            <a href="delete_order.php?id=<?php echo $row['id']; ?>"
+                class="job-btn"
+                style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
+                onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                🗑 HAPUS ORDER
+            </a>
 
             <?php elseif ($mode === 'progress'): ?>
                 <?php if ($lastStatus === 'paused'): ?>
@@ -483,9 +489,21 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 <a href="final_done.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-done" style="margin-top:8px;">
                     FINAL DONE
                 </a>
+                <a href="delete_order.php?id=<?php echo $row['id']; ?>"
+                    class="job-btn"
+                    style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
+                    onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                    🗑 HAPUS ORDER
+                </a>
 
             <?php else: ?>
                 <div class="job-btn job-btn-done">DONE</div>
+                <a href="delete_order.php?id=<?php echo $row['id']; ?>"
+                    class="job-btn"
+                    style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
+                    onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                    🗑 HAPUS ORDER
+                </a>
             <?php endif; ?>
         </div>
         <?php
@@ -568,6 +586,12 @@ function renderCards(array $rows, string $mode = 'waiting') {
             <?php endif; ?>
             <?php if (isset($_GET['resume_success'])): ?>
                 <p class="success">Order berhasil di-resume.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['delete_success'])): ?>
+                <p class="success">Order berhasil dihapus.</p>
+            <?php endif; ?>
+            <?php if (isset($_GET['delete_error'])): ?>
+                <p class="error">Order gagal dihapus atau bukan milik kamu.</p>
             <?php endif; ?>
 
             <?php if ($section === 'job'): ?>
