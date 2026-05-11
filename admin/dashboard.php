@@ -11,8 +11,20 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$date_from    = date('Y-m-d');
-$date_to      = date('Y-m-d');
+// ── Deteksi shift date ────────────────────────────────────────────────────────
+$now_h   = (int)date('H');
+$now_m   = (int)date('i');
+$now_tot = $now_h * 60 + $now_m;
+
+if ($now_tot < 390) {
+    $date_from = date('Y-m-d', strtotime('-1 day'));
+    $date_to   = date('Y-m-d', strtotime('-1 day'));
+} else {
+    $date_from = date('Y-m-d');
+    $date_to   = date('Y-m-d');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
 $staffList = [];
@@ -40,7 +52,7 @@ $query = mysqli_query($conn, "
         SUM(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_count
     FROM users u
     LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
-        AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
+        AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
         AND sps.status = 'done'
     WHERE u.role = 'qc' AND u.status = 1
     GROUP BY u.id, u.nama, u.nik
@@ -53,25 +65,21 @@ $daily_data = [];
 if ($selected_nik !== 'all') {
     $nik_esc2   = mysqli_real_escape_string($conn, $selected_nik);
     $dailyQuery = mysqli_query($conn, "
-        SELECT DATE(sps.created_at) AS tgl,
+        SELECT DATE(sps.start_time) AS tgl,
                COUNT(DISTINCT sps.order_id) AS total_order,
                COUNT(sps.id) AS total_step
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc2'
-          AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
+          AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
           AND sps.status = 'done'
-        GROUP BY DATE(sps.created_at)
+        GROUP BY DATE(sps.start_time)
         ORDER BY tgl ASC
     ");
     while ($d = mysqli_fetch_assoc($dailyQuery)) $daily_data[] = $d;
 }
 
 // ── Shift Definition ─────────────────────────────────────────────────────────
-// Shift 1: 06:30 - 15:14 → 28800 detik efektif
-// Shift 2: 15:15 - 22:59 → 27000 detik efektif
-// Shift 3: 23:00 - 06:29 → 24300 detik efektif
-
 function getShift(string $start_time): array {
     $h   = (int)date('H', strtotime($start_time));
     $m   = (int)date('i', strtotime($start_time));
@@ -99,12 +107,11 @@ if ($selected_nik !== 'all') {
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
           AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
         ORDER BY sps.start_time ASC
     ");
 
-    // Kelompokkan per hari per shift
     $grouped = [];
     while ($r = mysqli_fetch_assoc($ratioQ)) {
         $tgl   = date('Y-m-d', strtotime($r['start_time']));
@@ -112,10 +119,10 @@ if ($selected_nik !== 'all') {
         $key   = $tgl . '|' . $shift['nama'];
         if (!isset($grouped[$key])) {
             $grouped[$key] = [
-                'tgl'        => $tgl,
-                'shift_nama' => $shift['nama'],
-                'work_sec'   => $shift['detik'],
-                'total_detik'=> 0,
+                'tgl'         => $tgl,
+                'shift_nama'  => $shift['nama'],
+                'work_sec'    => $shift['detik'],
+                'total_detik' => 0,
             ];
         }
         $grouped[$key]['total_detik'] += (int)$r['durasi'];
@@ -140,7 +147,7 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
           $whereNik
         ORDER BY u.nama ASC, sps.start_time ASC
@@ -170,7 +177,7 @@ if ($selected_nik !== 'all') {
     foreach ($ratio_by_staff as $uid => &$s) {
         $days_arr = [];
         foreach ($s['days'] as $d) {
-            $ratio     = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
+            $ratio      = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
             $days_arr[] = array_merge($d, ['ratio' => $ratio]);
         }
         $s['days']      = array_values($days_arr);
@@ -198,7 +205,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
         :root {
             --red:       #CC0000;
             --red-dark:  #A30000;
@@ -221,439 +227,115 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             --shadow:    0 1px 4px rgba(0,0,0,0.07);
             --shadow-md: 0 4px 20px rgba(0,0,0,0.09);
         }
-
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            display: flex;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: var(--sidebar-w);
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0; left: 0; bottom: 0;
-            z-index: 200;
-        }
-        .sidebar-logo {
-            padding: 24px 20px 20px;
-            border-bottom: 1px solid var(--border);
-        }
-        .sidebar-logo-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .logo-icon {
-            width: 32px; height: 32px;
-            background: var(--red);
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-        }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+        .sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 200; }
+        .sidebar-logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+        .sidebar-logo-badge { display: inline-flex; align-items: center; gap: 8px; }
+        .logo-icon { width: 32px; height: 32px; background: var(--red); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
         .logo-icon svg { width: 18px; height: 18px; fill: #fff; }
-        .logo-text {
-            display: flex; flex-direction: column;
-        }
+        .logo-text { display: flex; flex-direction: column; }
         .logo-name { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.02em; }
         .logo-sub  { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; }
-
         .sidebar-nav { padding: 16px 12px; flex: 1; }
-        .nav-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--text3);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            padding: 0 8px;
-            margin-bottom: 8px;
-            margin-top: 16px;
-        }
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 9px 10px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text2);
-            text-decoration: none;
-            transition: background 0.12s, color 0.12s;
-            cursor: pointer;
-            margin-bottom: 2px;
-        }
+        .nav-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 8px; margin-bottom: 8px; margin-top: 16px; }
+        .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--text2); text-decoration: none; transition: background 0.12s, color 0.12s; cursor: pointer; margin-bottom: 2px; }
         .nav-item:hover { background: var(--surface2); color: var(--text); }
         .nav-item.active { background: var(--red-soft); color: var(--red); }
         .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
         .nav-item.active svg { stroke: var(--red); }
-
-        .sidebar-footer {
-            padding: 16px 12px;
-            border-top: 1px solid var(--border);
-        }
-        .user-card {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px;
-            border-radius: var(--radius-sm);
-            background: var(--surface2);
-        }
-        .user-avatar {
-            width: 32px; height: 32px;
-            background: var(--red);
-            border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 11px; font-weight: 700; color: #fff;
-            flex-shrink: 0;
-        }
+        .sidebar-footer { padding: 16px 12px; border-top: 1px solid var(--border); }
+        .user-card { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-sm); background: var(--surface2); }
+        .user-avatar { width: 32px; height: 32px; background: var(--red); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
         .user-info { flex: 1; min-width: 0; }
         .user-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .user-role { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
-        .btn-logout-sm {
-            font-size: 10px;
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid var(--red-mid);
-            background: var(--red-soft);
-            color: var(--red);
-            text-decoration: none;
-            font-weight: 600;
-            white-space: nowrap;
-            transition: background 0.12s;
-        }
+        .btn-logout-sm { font-size: 10px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--red-mid); background: var(--red-soft); color: var(--red); text-decoration: none; font-weight: 600; white-space: nowrap; transition: background 0.12s; }
         .btn-logout-sm:hover { background: var(--red-mid); }
-
-        /* MAIN */
-        .main {
-            margin-left: var(--sidebar-w);
-            flex: 1;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* TOPBAR */
-        .topbar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 0 28px;
-            height: 56px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0; z-index: 100;
-        }
+        .main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; display: flex; flex-direction: column; }
+        .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
         .topbar-title { font-size: 15px; font-weight: 700; color: var(--text); }
-        .topbar-date  { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-
-        /* CONTENT */
-        .content {
-            padding: 24px 28px;
-            height: calc(100vh - 56px);
-            overflow-y: auto;
-            overflow-x: hidden;
-        }
-
-        /* FILTER */
-        .filter-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 18px 22px;
-            margin-bottom: 22px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 14px;
-            align-items: flex-end;
-            box-shadow: var(--shadow);
-        }
+        .content { padding: 24px 28px; height: calc(100vh - 56px); overflow-y: auto; overflow-x: hidden; }
+        .filter-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 22px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; box-shadow: var(--shadow); }
         .filter-group { display: flex; flex-direction: column; gap: 5px; }
         .filter-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
-        .filter-input {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 13px;
-            padding: 7px 11px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            background: var(--surface2);
-            color: var(--text);
-            outline: none;
-            transition: border-color 0.15s;
-            min-width: 150px;
-        }
+        .filter-input { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; padding: 7px 11px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); outline: none; transition: border-color 0.15s; min-width: 150px; }
         .filter-input:focus { border-color: var(--red); }
-        .btn-filter {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 20px;
-            border-radius: var(--radius-sm);
-            border: none;
-            background: var(--red);
-            color: #fff;
-            cursor: pointer;
-            transition: background 0.15s;
-        }
+        .btn-filter { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 600; padding: 8px 20px; border-radius: var(--radius-sm); border: none; background: var(--red); color: #fff; cursor: pointer; transition: background 0.15s; }
         .btn-filter:hover { background: var(--red-dark); }
-
-        /* SUMMARY */
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 14px;
-            margin-bottom: 22px;
-        }
-        .summary-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 18px 20px;
-            box-shadow: var(--shadow);
-            position: relative;
-            overflow: hidden;
-            transition: transform 0.15s;
-        }
+        .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+        .summary-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; transition: transform 0.15s; }
         .summary-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .summary-card.accent {
-            background: var(--red);
-            border-color: var(--red-dark);
-        }
+        .summary-card.accent { background: var(--red); border-color: var(--red-dark); }
         .summary-card.accent .summary-label { color: rgba(255,255,255,0.7); }
         .summary-card.accent .summary-value { color: #fff; }
         .summary-card.accent .summary-sub   { color: rgba(255,255,255,0.6); }
-        .summary-card-bar {
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            background: var(--red);
-        }
+        .summary-card-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--red); }
         .summary-card.accent .summary-card-bar { background: rgba(255,255,255,0.3); }
-        .summary-icon {
-            width: 36px; height: 36px;
-            border-radius: 9px;
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 14px;
-        }
-        .icon-red    { background: var(--red-soft); }
-        .icon-green  { background: var(--green-soft); }
-        .icon-blue   { background: var(--blue-soft); }
-        .icon-white  { background: rgba(255,255,255,0.2); }
+        .summary-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+        .icon-red   { background: var(--red-soft); }
+        .icon-green { background: var(--green-soft); }
+        .icon-blue  { background: var(--blue-soft); }
+        .icon-white { background: rgba(255,255,255,0.2); }
         .summary-icon svg { width: 18px; height: 18px; }
         .summary-label { font-size: 11px; color: var(--text3); font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
         .summary-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 4px; }
         .summary-sub   { font-size: 11px; color: var(--text3); }
-
-        /* SECTION TITLE */
-        .section-head {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .section-head-line {
-            width: 3px; height: 16px;
-            background: var(--red);
-            border-radius: 2px;
-        }
+        .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .section-head-line { width: 3px; height: 16px; background: var(--red); border-radius: 2px; }
         .section-head-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
-
-        /* STAFF GRID */
-        .staff-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-        .staff-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 16px 18px;
-            box-shadow: var(--shadow);
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
+        .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .staff-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px 18px; box-shadow: var(--shadow); transition: transform 0.15s, box-shadow 0.15s; }
         .staff-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
-        .staff-top {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-        .staff-avatar {
-            width: 36px; height: 36px;
-            border-radius: 50%;
-            background: var(--red);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 12px; font-weight: 700; color: #fff;
-            flex-shrink: 0;
-        }
+        .staff-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .staff-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--red); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
         .staff-avatar.zero { background: #e5e7eb; color: var(--text3); }
         .staff-name { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
         .staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
         .staff-divider { height: 1px; background: var(--border); margin: 10px 0; }
-        .staff-stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
-            margin-bottom: 10px;
-        }
-        .stat-box {
-            background: var(--surface2);
-            border-radius: 7px;
-            padding: 7px 10px;
-            text-align: center;
-        }
+        .staff-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+        .stat-box { background: var(--surface2); border-radius: 7px; padding: 7px 10px; text-align: center; }
         .stat-box-val { font-size: 18px; font-weight: 700; color: var(--red); line-height: 1; }
         .stat-box-val.zero { color: var(--text3); }
         .stat-box-label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-        .staff-mesin-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-            padding: 2px 0;
-        }
+        .staff-mesin-row { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 0; }
         .staff-mesin-label { color: var(--text2); }
         .staff-mesin-val   { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: var(--text); }
         .staff-mesin-val.has { color: var(--red); }
-
-        /* CHART */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 22px;
-        }
-        .chart-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-        }
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+        .chart-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 20px 22px; box-shadow: var(--shadow); }
         .chart-card.full { grid-column: 1 / -1; }
         .chart-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 18px; }
-
-        /* TABLE */
-        .table-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            margin-bottom: 28px;
-        }
-        .table-head-bar {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+        .table-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); margin-bottom: 28px; }
+        .table-head-bar { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
         .dash-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .dash-table th {
-            padding: 9px 14px;
-            text-align: left;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text3);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            background: var(--surface2);
-            border-bottom: 1px solid var(--border);
-        }
+        .dash-table th { padding: 9px 14px; text-align: left; font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; background: var(--surface2); border-bottom: 1px solid var(--border); }
         .dash-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
         .dash-table tr:last-child td { border-bottom: none; }
         .dash-table tr:hover td { background: #fafafa; }
-        .pill {
-            display: inline-block;
-            padding: 2px 9px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .pill-red   { background: var(--red-soft);   color: var(--red); }
-        .pill-green { background: var(--green-soft);  color: var(--green); }
-        .pill-gray  { background: #f3f4f6; color: var(--text3); }
         .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-
-        /* OPERATION RATIO */
         .ratio-section { margin-bottom: 28px; }
         .ratio-table-wrap { overflow-x: auto; }
-        .ratio-bar-wrap {
-            display: flex; align-items: center; gap: 8px; min-width: 120px;
-        }
-        .ratio-bar-bg {
-            flex: 1; height: 8px; background: #f3f4f6;
-            border-radius: 99px; overflow: hidden; min-width: 60px;
-        }
-        .ratio-bar-fill {
-            height: 100%; border-radius: 99px;
-            transition: width 0.6s cubic-bezier(.4,0,.2,1);
-        }
-        .ratio-high  { background: var(--green); }
-        .ratio-mid   { background: #f59e0b; }
-        .ratio-low   { background: var(--red); }
-        .ratio-val {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px; font-weight: 600;
-            min-width: 38px; text-align: right;
-        }
-        .ratio-val.high { color: var(--green); }
-        .ratio-val.mid  { color: #f59e0b; }
-        .ratio-val.low  { color: var(--red); }
-        .ratio-badge {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 2px 8px; border-radius: 20px;
-            font-size: 10px; font-weight: 700;
-        }
+        .ratio-bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+        .ratio-bar-bg { flex: 1; height: 8px; background: #f3f4f6; border-radius: 99px; overflow: hidden; min-width: 60px; }
+        .ratio-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(.4,0,.2,1); }
+        .ratio-high { background: var(--green); } .ratio-mid { background: #f59e0b; } .ratio-low { background: var(--red); }
+        .ratio-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; min-width: 38px; text-align: right; }
+        .ratio-val.high { color: var(--green); } .ratio-val.mid { color: #f59e0b; } .ratio-val.low { color: var(--red); }
+        .ratio-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
         .ratio-badge.high { background: var(--green-soft); color: var(--green); }
         .ratio-badge.mid  { background: #fef3c7; color: #b45309; }
         .ratio-badge.low  { background: var(--red-soft); color: var(--red); }
-        .ratio-staff-card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 16px 18px;
-            box-shadow: var(--shadow);
-        }
-        .ratio-staff-header {
-            display: flex; align-items: center;
-            justify-content: space-between; margin-bottom: 12px;
-        }
+        .ratio-staff-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); padding: 16px 18px; box-shadow: var(--shadow); }
+        .ratio-staff-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
         .ratio-staff-name { font-size: 13px; font-weight: 700; color: var(--text); }
         .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .ratio-day-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 5px 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 12px;
-        }
+        .ratio-day-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
         .ratio-day-row:last-child { border-bottom: none; }
-        .ratio-day-label {
-            min-width: 90px; color: var(--text2);
-            font-family: 'JetBrains Mono', monospace; font-size: 11px;
-        }
-        .ratio-grid-all {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 14px;
-        }
+        .ratio-grid-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
     </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
 <aside class="sidebar">
     <div class="sidebar-logo">
         <div class="sidebar-logo-badge">
@@ -666,7 +348,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
         </div>
     </div>
-
     <nav class="sidebar-nav">
         <div class="nav-label">Menu</div>
         <a class="nav-item active" href="dashboard.php">
@@ -677,6 +358,10 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
             Evaluation
         </a>
+        <a class="nav-item" href="cycle_time.php">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+            Cycle Time
+        </a>
         <a class="nav-item" href="../qc/history.php">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
             History QC
@@ -685,21 +370,12 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
             Main Menu
         </a>
-        <a class="nav-item" href="cycle_time.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
-            Cycle Time
-        </a>
     </nav>
-
     <div class="sidebar-footer">
-                <div class="user-card">
-            <div class="user-avatar">
-                <?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?>
-            </div>
+        <div class="user-card">
+            <div class="user-avatar"><?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?></div>
             <div class="user-info">
-                <div class="user-name">
-                    <?php echo isset($_SESSION['nama']) ? htmlspecialchars($_SESSION['nama']) : 'Admin'; ?>
-                </div>
+                <div class="user-name"><?php echo isset($_SESSION['nama']) ? htmlspecialchars($_SESSION['nama']) : 'Admin'; ?></div>
                 <div class="user-role">Manager</div>
             </div>
             <a href="../auth/logout.php" class="btn-logout-sm">Logout</a>
@@ -707,16 +383,14 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
     </div>
 </aside>
 
-<!-- MAIN -->
 <div class="main">
     <div class="topbar">
         <span class="topbar-title">Operating Ratio Dashboard</span>
-        <span class="topbar-date" style="font-size:15px;font-weight:700;color:var(--text);"><?php echo date('l, d F Y'); ?></span>
+        <span class="topbar-date" style="font-size:15px;font-weight:700;color:var(--text);"><?php echo date('l, d F Y', strtotime($date_from)); ?></span>
     </div>
 
-<div class="content">
+    <div class="content">
 
-        <!-- Filter -->
         <form method="GET" class="filter-card">
             <div class="filter-group">
                 <label class="filter-label">Staff QC</label>
@@ -732,7 +406,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <button type="submit" class="btn-filter">Tampilkan</button>
         </form>
 
-        <!-- Summary -->
         <div class="summary-grid">
             <div class="summary-card accent">
                 <div class="summary-card-bar"></div>
@@ -741,7 +414,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 </div>
                 <div class="summary-label">Total Step</div>
                 <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
-                <div class="summary-sub">Periode ini</div>
+                <div class="summary-sub">Hari ini</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
@@ -767,21 +440,19 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                     <svg viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>
                 </div>
                 <div class="summary-label">Top Performer</div>
-                <div class="summary-value" style="font-size:16px; padding-top:6px; line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
+                <div class="summary-value" style="font-size:16px;padding-top:6px;line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
                 <div class="summary-sub">Step terbanyak</div>
             </div>
         </div>
 
-        <!-- ── OPERATION RATIO SECTION ─────────────────────────────── -->
         <div class="ratio-section">
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
                 <?php
-                $now_minutes = (int)date('H') * 60 + (int)date('i');
-                if ($now_minutes >= 390 && $now_minutes < 915) {
+                if ($now_tot >= 390 && $now_tot < 915) {
                     $shift_aktif = 'Shift 1 (06:30-15:14) | Efektif 8 jam';
-                } elseif ($now_minutes >= 915 && $now_minutes < 1380) {
+                } elseif ($now_tot >= 915 && $now_tot < 1380) {
                     $shift_aktif = 'Shift 2 (15:15-22:59) | Efektif 7,5 jam';
                 } else {
                     $shift_aktif = 'Shift 3 (23:00-06:29) | Efektif 6,75 jam';
@@ -815,19 +486,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <div class="table-card ratio-table-wrap">
                     <div class="table-head-bar">
                         <div class="section-head-line"></div>
-                        <div class="section-head-title" style="margin:0;">
-                            <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?> — Ratio per Hari
-                        </div>
+                        <div class="section-head-title" style="margin:0;"><?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?> — Ratio per Shift</div>
                     </div>
                     <table class="dash-table">
                         <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Shift</th>
-                                <th>Waktu Aktif</th>
-                                <th style="min-width:200px;">Operation Ratio</th>
-                                <th>Status</th>
-                            </tr>
+                            <tr><th>Tanggal</th><th>Shift</th><th>Waktu Aktif</th><th style="min-width:200px;">Operation Ratio</th><th>Status</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($ratio_daily_data as $rd):
@@ -837,17 +500,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                             ?>
                             <tr>
                                 <td class="mono"><?php echo $rd['tgl']; ?></td>
-                                <td>
-                                    <span style="font-size:11px;font-weight:600;color:var(--text2);">
-                                        <?php echo $rd['shift_nama']; ?>
-                                    </span>
-                                </td>
+                                <td><span style="font-size:11px;font-weight:600;color:var(--text2);"><?php echo $rd['shift_nama']; ?></span></td>
                                 <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
-                                        <div class="ratio-bar-bg">
-                                            <div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div>
-                                        </div>
+                                        <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
                                         <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
                                     </div>
                                 </td>
@@ -874,16 +531,12 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                                 <div class="ratio-staff-nik"><?php echo $rs['nik']; ?></div>
                             </div>
                             <div style="text-align:right;">
-                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);">
-                                    <?php echo $rs['avg_ratio']; ?>%
-                                </div>
+                                <div style="font-size:20px;font-weight:700;color:var(--<?php echo $avg_cls === 'high' ? 'green' : ($avg_cls === 'mid' ? 'text' : 'red'); ?>);"><?php echo $rs['avg_ratio']; ?>%</div>
                                 <div style="font-size:10px;color:var(--text3);">avg ratio</div>
                             </div>
                         </div>
                         <div class="ratio-bar-wrap" style="margin-bottom:12px;">
-                            <div class="ratio-bar-bg" style="height:10px;">
-                                <div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div>
-                            </div>
+                            <div class="ratio-bar-bg" style="height:10px;"><div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div></div>
                         </div>
                         <?php foreach ($rs['days'] as $d):
                             $dcls = ratioClass($d['ratio']);
@@ -893,9 +546,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                         <div class="ratio-day-row">
                             <span style="font-size:10px;color:var(--text2);font-family:'JetBrains Mono',monospace;min-width:80px;"><?php echo $d['tgl']; ?></span>
                             <span style="font-size:10px;color:var(--text3);min-width:44px;"><?php echo $d['shift_nama']; ?></span>
-                            <div class="ratio-bar-bg" style="flex:1;height:8px;">
-                                <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
-                            </div>
+                            <div class="ratio-bar-bg" style="flex:1;height:8px;"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
                             <span class="ratio-val <?php echo $dcls; ?>" style="min-width:42px;"><?php echo $d['ratio']; ?>%</span>
                             <span style="font-size:10px;color:var(--text3);min-width:44px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
                         </div>
@@ -906,9 +557,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <?php endif; ?>
             <?php endif; ?>
         </div>
-        <!-- ── END OPERATION RATIO ──────────────────────────────────── -->
 
-        <!-- Staff Cards -->
         <div class="section-head">
             <div class="section-head-line"></div>
             <div class="section-head-title">Detail per Staff</div>
@@ -957,7 +606,6 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <?php endforeach; ?>
         </div>
 
-        <!-- Charts -->
         <?php if ($selected_nik === 'all'): ?>
         <div class="charts-grid">
             <div class="chart-card">
@@ -1011,7 +659,6 @@ const chartOpts = {
 const staffNames  = <?php echo json_encode(array_column($staff_data, 'nama')); ?>;
 const totalSteps  = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_step'))); ?>;
 const totalOrders = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_order'))); ?>;
-
 new Chart(document.getElementById('chartStep'), {
     type: 'bar',
     data: { labels: staffNames, datasets: [{ data: totalSteps, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
@@ -1022,7 +669,6 @@ new Chart(document.getElementById('chartOrder'), {
     data: { labels: staffNames, datasets: [{ data: totalOrders, backgroundColor: 'rgba(5,150,105,0.7)', borderColor: '#059669', borderWidth: 1, borderRadius: 5 }] },
     options: chartOpts
 });
-
 <?php else: ?>
 const mesinLabels = ['CMM','RONDCOM','ROUGHNESS','CONTOUR','PROFIL PROJ.','MANUAL','HARDNESS'];
 const mesinData   = [
@@ -1039,7 +685,6 @@ new Chart(document.getElementById('chartMesin'), {
     data: { labels: mesinLabels, datasets: [{ data: mesinData, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
     options: chartOpts
 });
-
 const hariLabels = <?php echo json_encode(array_column($daily_data, 'tgl')); ?>;
 const hariSteps  = <?php echo json_encode(array_map('intval', array_column($daily_data, 'total_step'))); ?>;
 const hariOrders = <?php echo json_encode(array_map('intval', array_column($daily_data, 'total_order'))); ?>;
@@ -1056,41 +701,29 @@ new Chart(document.getElementById('chartHarian'), {
 });
 <?php endif; ?>
 
-    // Auto refresh setiap 30 detik
-    setTimeout(() => {
-        window.location.reload();
-    }, 30000);
+setTimeout(() => { window.location.reload(); }, 30000);
 
-    // Auto scroll pelan-pelan terus menerus
-        let scrollSpeed = 0.3;
-        let scrolling   = true;
-        let scrollPos   = 0;
+let scrollSpeed = 0.3;
+let scrolling   = true;
+let scrollPos   = 0;
 
-        function autoScroll() {
-            if (!scrolling) return;
-            const content = document.querySelector('.content');
-            if (!content) return;
+function autoScroll() {
+    if (!scrolling) return;
+    const content = document.querySelector('.content');
+    if (!content) return;
+    scrollPos += scrollSpeed;
+    if (scrollPos + content.clientHeight >= content.scrollHeight - 5) scrollPos = 0;
+    content.scrollTop = scrollPos;
+    requestAnimationFrame(autoScroll);
+}
 
-            scrollPos += scrollSpeed;
-
-            if (scrollPos + content.clientHeight >= content.scrollHeight - 5) {
-                scrollPos = 0;
-            }
-
-            content.scrollTop = scrollPos;
-            requestAnimationFrame(autoScroll);
-        }
-
-        const contentEl = document.querySelector('.content');
-        if (contentEl) {
-            scrollPos = contentEl.scrollTop;
-            contentEl.addEventListener('mouseenter', () => scrolling = false);
-            contentEl.addEventListener('mouseleave', () => {
-                scrolling = true;
-                autoScroll();
-            });
-            autoScroll();
-        }
+const contentEl = document.querySelector('.content');
+if (contentEl) {
+    scrollPos = contentEl.scrollTop;
+    contentEl.addEventListener('mouseenter', () => scrolling = false);
+    contentEl.addEventListener('mouseleave', () => { scrolling = true; autoScroll(); });
+    autoScroll();
+}
 </script>
 </body>
 </html>
