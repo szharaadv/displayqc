@@ -20,12 +20,19 @@ $today    = date('Y-m-d');
 $user_id  = (int)$_SESSION['id'];
 
 // ── Deteksi tanggal shift ─────────────────────────────────────────────────────
-$now_h   = (int)date('H');
-$now_m   = (int)date('i');
-$now_tot = $now_h * 60 + $now_m;
+$now_h    = (int)date('H');
+$now_m    = (int)date('i');
+$now_tot  = $now_h * 60 + $now_m;
+$now_hari = (int)date('N'); // 1=Sen, 5=Jum, 6=Sab, 7=Min
 
-// Jam 00:00 - 06:29 → masih shift 3, pakai tanggal kemarin
-if ($now_tot < 390) {
+if ($now_hari === 7 && $now_tot < 315) {
+    // Minggu jam 00:00-05:14 → masih shift 3 Sabtu
+    $shift_date = date('Y-m-d', strtotime('-1 day'));
+} elseif ($now_hari === 6 && $now_tot < 390) {
+    // Sabtu jam 00:00-06:29 → masih shift 3 Jumat
+    $shift_date = date('Y-m-d', strtotime('-1 day'));
+} elseif ($now_tot < 390) {
+    // Hari lain jam 00:00-06:29 → masih shift 3 kemarin
     $shift_date = date('Y-m-d', strtotime('-1 day'));
 } else {
     $shift_date = date('Y-m-d');
@@ -51,18 +58,38 @@ $total_aktif  = (int)($today_ratio['total_aktif'] ?? 0);
 $shift_nama   = '-';
 $shift_detik  = 28800;
 if ($first_start) {
-    $h   = (int)date('H', strtotime($first_start));
-    $m   = (int)date('i', strtotime($first_start));
-    $tot = $h * 60 + $m;
-    if ($tot >= 390 && $tot < 915) {
-        $shift_nama  = 'Shift 1';
-        $shift_detik = 28800;
-    } elseif ($tot >= 915 && $tot < 1380) {
-        $shift_nama  = 'Shift 2';
-        $shift_detik = 27000;
+    $h    = (int)date('H', strtotime($first_start));
+    $m    = (int)date('i', strtotime($first_start));
+    $tot  = $h * 60 + $m;
+    $hari = (int)date('N', strtotime($first_start));
+
+    if ($hari === 5) {
+        // Jumat
+        if ($tot >= 390 && $tot < 885) {
+            $shift_nama = 'Shift 1'; $shift_detik = 29700;
+        } elseif ($tot >= 885 && $tot < 1365) {
+            $shift_nama = 'Shift 2'; $shift_detik = 28800;
+        } else {
+            $shift_nama = 'Shift 3'; $shift_detik = 27900;
+        }
+    } elseif ($hari === 6) {
+        // Sabtu
+        if ($tot >= 390 && $tot < 855) {
+            $shift_nama = 'Shift 1'; $shift_detik = 27900;
+        } elseif ($tot >= 855 && $tot < 1305) {
+            $shift_nama = 'Shift 2'; $shift_detik = 27000;
+        } else {
+            $shift_nama = 'Shift 3'; $shift_detik = 27000;
+        }
     } else {
-        $shift_nama  = 'Shift 3';
-        $shift_detik = 24300;
+        // Senin - Kamis
+        if ($tot >= 390 && $tot < 915) {
+            $shift_nama = 'Shift 1'; $shift_detik = 28800;
+        } elseif ($tot >= 915 && $tot < 1380) {
+            $shift_nama = 'Shift 2'; $shift_detik = 27000;
+        } else {
+            $shift_nama = 'Shift 3'; $shift_detik = 24300;
+        }
     }
 }
 
@@ -673,48 +700,67 @@ function renderCards(array $rows, string $mode = 'waiting') {
 
         // ── Notifikasi shift hampir habis ─────────────────────────────────────
         function cekShift() {
-            const now  = new Date(new Date() - timeDiff);
-            const h    = now.getHours();
-            const m    = now.getMinutes();
-            const mnt  = h * 60 + m;
+        const now  = new Date(new Date() - timeDiff);
+        const h    = now.getHours();
+        const m    = now.getMinutes();
+        const mnt  = h * 60 + m;
+        const hari = now.getDay(); // 0=Min, 5=Jum, 6=Sab
 
-            const batas = [
-                { nama: 'Shift 1', akhir: 15 * 60 + 15 },
-                { nama: 'Shift 2', akhir: 23 * 60 + 0  },
-                { nama: 'Shift 3', akhir: 6  * 60 + 30 },
+        let batas = [];
+        if (hari === 5) {
+            // Jumat
+            batas = [
+                { nama: 'Shift 1', akhir: 14 * 60 + 45 },
+                { nama: 'Shift 2', akhir: 22 * 60 + 45 },
+                { nama: 'Shift 3', akhir:  6 * 60 + 30 },
             ];
-
-            let notif = document.getElementById('shift-notif');
-
-            for (const shift of batas) {
-                let selisih = shift.akhir - mnt;
-                if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
-                    selisih = (shift.akhir + 24 * 60) - mnt;
-                }
-                if (selisih > 0 && selisih <= 15) {
-                    if (!notif) {
-                        notif = document.createElement('div');
-                        notif.id = 'shift-notif';
-                        notif.style.cssText = `
-                            position: fixed;
-                            top: 0; left: 0; right: 0;
-                            background: #f59e0b;
-                            color: #fff;
-                            text-align: center;
-                            padding: 12px;
-                            font-weight: 700;
-                            font-size: 14px;
-                            z-index: 9999;
-                            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                        `;
-                        document.body.prepend(notif);
-                    }
-                    notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
-                    return;
-                }
-            }
-            if (notif) notif.remove();
+        } else if (hari === 6) {
+            // Sabtu
+            batas = [
+                { nama: 'Shift 1', akhir: 14 * 60 + 15 },
+                { nama: 'Shift 2', akhir: 21 * 60 + 45 },
+                { nama: 'Shift 3', akhir:  5 * 60 + 15 },
+            ];
+        } else {
+            // Senin - Kamis
+            batas = [
+                { nama: 'Shift 1', akhir: 15 * 60 + 15 },
+                { nama: 'Shift 2', akhir: 23 * 60 +  0 },
+                { nama: 'Shift 3', akhir:  6 * 60 + 30 },
+            ];
         }
+
+        let notif = document.getElementById('shift-notif');
+
+        for (const shift of batas) {
+            let selisih = shift.akhir - mnt;
+            if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
+                selisih = (shift.akhir + 24 * 60) - mnt;
+            }
+            if (selisih > 0 && selisih <= 15) {
+                if (!notif) {
+                    notif = document.createElement('div');
+                    notif.id = 'shift-notif';
+                    notif.style.cssText = `
+                        position: fixed;
+                        top: 0; left: 0; right: 0;
+                        background: #f59e0b;
+                        color: #fff;
+                        text-align: center;
+                        padding: 12px;
+                        font-weight: 700;
+                        font-size: 14px;
+                        z-index: 9999;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    `;
+                    document.body.prepend(notif);
+                }
+                notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
+                return;
+            }
+        }
+        if (notif) notif.remove();
+    }
 
         cekShift();
         setInterval(cekShift, 60000);

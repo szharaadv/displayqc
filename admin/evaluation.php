@@ -53,63 +53,119 @@ $summary_data = [];
 while ($row = mysqli_fetch_assoc($summaryQuery)) $summary_data[] = $row;
 
 // ── Operation Ratio ──────────────────────────────────────────────────────────
-define('WORK_SECONDS', 28800);
+function getShift(string $start_time): array {
+    $h    = (int)date('H', strtotime($start_time));
+    $m    = (int)date('i', strtotime($start_time));
+    $tot  = $h * 60 + $m;
+    $hari = (int)date('N', strtotime($start_time));
+
+    if ($hari === 5) {
+        if ($tot >= 390 && $tot < 885)       return ['nama' => 'Shift 1', 'detik' => 29700];
+        elseif ($tot >= 885 && $tot < 1365)  return ['nama' => 'Shift 2', 'detik' => 28800];
+        else                                  return ['nama' => 'Shift 3', 'detik' => 27900];
+    } elseif ($hari === 6) {
+        if ($tot >= 390 && $tot < 855)       return ['nama' => 'Shift 1', 'detik' => 27900];
+        elseif ($tot >= 855 && $tot < 1305)  return ['nama' => 'Shift 2', 'detik' => 27000];
+        else                                  return ['nama' => 'Shift 3', 'detik' => 27000];
+    } else {
+        if ($tot >= 390 && $tot < 915)       return ['nama' => 'Shift 1', 'detik' => 28800];
+        elseif ($tot >= 915 && $tot < 1380)  return ['nama' => 'Shift 2', 'detik' => 27000];
+        else                                  return ['nama' => 'Shift 3', 'detik' => 24300];
+    }
+}
 
 $ratio_data = [];
 if ($sel_nik !== 'all') {
     $nik_esc2 = mysqli_real_escape_string($conn, $sel_nik);
-    $ratioQ = mysqli_query($conn, "
+    $ratioQ   = mysqli_query($conn, "
         SELECT
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+            sps.start_time,
+            TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc2'
           AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
-        GROUP BY DATE(sps.start_time)
-        ORDER BY tgl ASC
+        ORDER BY sps.start_time ASC
     ");
+
+    $grouped = [];
     while ($r = mysqli_fetch_assoc($ratioQ)) {
-        $r['ratio'] = min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1));
-        $ratio_data[] = $r;
+        $tgl   = date('Y-m-d', strtotime($r['start_time']));
+        $shift = getShift($r['start_time']);
+        $key   = $tgl . '|' . $shift['nama'];
+        if (!isset($grouped[$key])) {
+            $grouped[$key] = [
+                'tgl'         => $tgl,
+                'total_detik' => 0,
+                'work_sec'    => $shift['detik'],
+            ];
+        }
+        $grouped[$key]['total_detik'] += (int)$r['durasi'];
     }
+
+    foreach ($grouped as $g) {
+        $ratio_data[] = [
+            'tgl'         => $g['tgl'],
+            'total_detik' => $g['total_detik'],
+            'ratio'       => min(100, round(($g['total_detik'] / $g['work_sec']) * 100, 1)),
+        ];
+    }
+
 } else {
     $ratioAllQ = mysqli_query($conn, "
         SELECT
             u.id, u.nama, u.nik,
-            DATE(sps.start_time) AS tgl,
-            SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_detik
+            sps.start_time,
+            TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
           $whereNik
-        GROUP BY u.id, u.nama, u.nik, DATE(sps.start_time)
-        ORDER BY u.nama ASC, tgl ASC
+        ORDER BY u.nama ASC, sps.start_time ASC
     ");
+
     $ratio_by_staff = [];
     while ($r = mysqli_fetch_assoc($ratioAllQ)) {
-        $uid = $r['id'];
+        $uid   = $r['id'];
+        $tgl   = date('Y-m-d', strtotime($r['start_time']));
+        $shift = getShift($r['start_time']);
+        $key   = $tgl . '|' . $shift['nama'];
+
         if (!isset($ratio_by_staff[$uid])) {
             $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
         }
-        $ratio_by_staff[$uid]['days'][] = [
-            'tgl'         => $r['tgl'],
-            'total_detik' => $r['total_detik'],
-            'ratio'       => min(100, round(($r['total_detik'] / WORK_SECONDS) * 100, 1)),
-        ];
+        if (!isset($ratio_by_staff[$uid]['days'][$key])) {
+            $ratio_by_staff[$uid]['days'][$key] = [
+                'tgl'         => $tgl,
+                'total_detik' => 0,
+                'work_sec'    => $shift['detik'],
+            ];
+        }
+        $ratio_by_staff[$uid]['days'][$key]['total_detik'] += (int)$r['durasi'];
     }
+
     foreach ($ratio_by_staff as &$s) {
-        $s['avg_ratio'] = count($s['days']) > 0
-            ? round(array_sum(array_column($s['days'], 'ratio')) / count($s['days']), 1)
+        $days_arr = [];
+        foreach ($s['days'] as $d) {
+            $days_arr[] = [
+                'tgl'         => $d['tgl'],
+                'total_detik' => $d['total_detik'],
+                'ratio'       => min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1)),
+            ];
+        }
+        $s['days']      = array_values($days_arr);
+        $s['avg_ratio'] = count($days_arr) > 0
+            ? round(array_sum(array_column($days_arr, 'ratio')) / count($days_arr), 1)
             : 0;
     }
     unset($s);
     $ratio_data = array_values($ratio_by_staff);
 }
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Cycle Time per Order ─────────────────────────────────────────────────────
 $cycleQuery = mysqli_query($conn, "

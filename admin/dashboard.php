@@ -12,11 +12,24 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
 }
 
 // ── Deteksi shift date ────────────────────────────────────────────────────────
-$now_h   = (int)date('H');
-$now_m   = (int)date('i');
-$now_tot = $now_h * 60 + $now_m;
+// ── Deteksi shift date ────────────────────────────────────────────
+$now_h    = (int)date('H');
+$now_m    = (int)date('i');
+$now_tot  = $now_h * 60 + $now_m;
+$now_hari = (int)date('N'); // 1=Sen, 5=Jum, 6=Sab, 7=Min
 
-if ($now_tot < 390) {
+// Tentukan batas shift 3 berakhir (dalam menit dari 00:00)
+// Shift 3 Sabtu berakhir 05:15 → hari Minggu jam 00:00-05:14 masih shift 3 Sabtu
+// Shift 3 Jumat berakhir 06:30 → hari Sabtu jam 00:00-06:29 masih shift 3 Jumat
+// Shift 3 Senin-Kamis berakhir 06:30 → jam 00:00-06:29 masih shift 3 kemarin
+
+if ($now_hari === 7 && $now_tot < 315) {
+    $date_from = date('Y-m-d', strtotime('-1 day'));
+    $date_to   = date('Y-m-d', strtotime('-1 day'));
+} elseif ($now_hari === 6 && $now_tot < 390) {
+    $date_from = date('Y-m-d', strtotime('-1 day'));
+    $date_to   = date('Y-m-d', strtotime('-1 day'));
+} elseif ($now_tot < 390) {
     $date_from = date('Y-m-d', strtotime('-1 day'));
     $date_to   = date('Y-m-d', strtotime('-1 day'));
 } else {
@@ -81,16 +94,49 @@ if ($selected_nik !== 'all') {
 
 // ── Shift Definition ─────────────────────────────────────────────────────────
 function getShift(string $start_time): array {
-    $h   = (int)date('H', strtotime($start_time));
-    $m   = (int)date('i', strtotime($start_time));
-    $tot = $h * 60 + $m;
+    $h    = (int)date('H', strtotime($start_time));
+    $m    = (int)date('i', strtotime($start_time));
+    $tot  = $h * 60 + $m;
+    $hari = (int)date('N', strtotime($start_time)); // 1=Sen, 5=Jum, 6=Sab
 
-    if ($tot >= 390 && $tot < 915) {
-        return ['nama' => 'Shift 1', 'detik' => 28800];
-    } elseif ($tot >= 915 && $tot < 1380) {
-        return ['nama' => 'Shift 2', 'detik' => 27000];
+    if ($hari === 5) {
+        // ── JUMAT ──────────────────────────────────────────────────
+        // Shift 1: 06:30 - 14:45 → 29.700 detik
+        // Shift 2: 14:45 - 22:45 → 28.800 detik
+        // Shift 3: 22:45 - 06:29 → 27.900 detik
+        if ($tot >= 390 && $tot < 885) {
+            return ['nama' => 'Shift 1', 'detik' => 29700];
+        } elseif ($tot >= 885 && $tot < 1365) {
+            return ['nama' => 'Shift 2', 'detik' => 28800];
+        } else {
+            return ['nama' => 'Shift 3', 'detik' => 27900];
+        }
+
+    } elseif ($hari === 6) {
+        // ── SABTU ──────────────────────────────────────────────────
+        // Shift 1: 06:30 - 14:15 → 27.900 detik
+        // Shift 2: 14:15 - 21:45 → 27.000 detik
+        // Shift 3: 21:45 - 05:14 → 27.000 detik
+        if ($tot >= 390 && $tot < 855) {
+            return ['nama' => 'Shift 1', 'detik' => 27900];
+        } elseif ($tot >= 855 && $tot < 1305) {
+            return ['nama' => 'Shift 2', 'detik' => 27000];
+        } else {
+            return ['nama' => 'Shift 3', 'detik' => 27000];
+        }
+
     } else {
-        return ['nama' => 'Shift 3', 'detik' => 24300];
+        // ── SENIN - KAMIS ───────────────────────────────────────────
+        // Shift 1: 06:30 - 15:14 → 28.800 detik
+        // Shift 2: 15:15 - 22:59 → 27.000 detik
+        // Shift 3: 23:00 - 06:29 → 24.300 detik
+        if ($tot >= 390 && $tot < 915) {
+            return ['nama' => 'Shift 1', 'detik' => 28800];
+        } elseif ($tot >= 915 && $tot < 1380) {
+            return ['nama' => 'Shift 2', 'detik' => 27000];
+        } else {
+            return ['nama' => 'Shift 3', 'detik' => 24300];
+        }
     }
 }
 
@@ -450,14 +496,35 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
                 <?php
-                if ($now_tot >= 390 && $now_tot < 915) {
-                    $shift_aktif = 'Shift 1 (06:30-15:14) | Efektif 8 jam';
-                } elseif ($now_tot >= 915 && $now_tot < 1380) {
-                    $shift_aktif = 'Shift 2 (15:15-22:59) | Efektif 7,5 jam';
-                } else {
-                    $shift_aktif = 'Shift 3 (23:00-06:29) | Efektif 6,75 jam';
-                }
-                ?>
+                    if ($now_hari === 5) {
+                        // Jumat
+                        if ($now_tot >= 390 && $now_tot < 885) {
+                            $shift_aktif = 'Shift 1 (06:30-14:45) | Efektif 8,25 jam';
+                        } elseif ($now_tot >= 885 && $now_tot < 1365) {
+                            $shift_aktif = 'Shift 2 (14:45-22:45) | Efektif 8 jam';
+                        } else {
+                            $shift_aktif = 'Shift 3 (22:45-06:30) | Efektif 7,75 jam';
+                        }
+                    } elseif ($now_hari === 6) {
+                        // Sabtu
+                        if ($now_tot >= 390 && $now_tot < 855) {
+                            $shift_aktif = 'Shift 1 (06:30-14:15) | Efektif 7,75 jam';
+                        } elseif ($now_tot >= 855 && $now_tot < 1305) {
+                            $shift_aktif = 'Shift 2 (14:15-21:45) | Efektif 7,5 jam';
+                        } else {
+                            $shift_aktif = 'Shift 3 (21:45-05:15) | Efektif 7,5 jam';
+                        }
+                    } else {
+                        // Senin - Kamis
+                        if ($now_tot >= 390 && $now_tot < 915) {
+                            $shift_aktif = 'Shift 1 (06:30-15:14) | Efektif 8 jam';
+                        } elseif ($now_tot >= 915 && $now_tot < 1380) {
+                            $shift_aktif = 'Shift 2 (15:15-22:59) | Efektif 7,5 jam';
+                        } else {
+                            $shift_aktif = 'Shift 3 (23:00-06:29) | Efektif 6,75 jam';
+                        }
+                    }
+                    ?>
                 <span style="font-size:11px;color:var(--text3);margin-left:8px;">
                     Shift Aktif: <strong><?php echo $shift_aktif; ?></strong> &nbsp;|&nbsp;
                     <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
