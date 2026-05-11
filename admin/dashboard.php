@@ -11,8 +11,19 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$date_from    = date('Y-m-d');
-$date_to      = date('Y-m-d');
+$now_h   = (int)date('H');
+$now_m   = (int)date('i');
+$now_tot = $now_h * 60 + $now_m;
+
+// Jam 00:00-06:29 = masih shift 3, pakai tanggal kemarin
+if ($now_tot < 390) {
+    $date_from = date('Y-m-d', strtotime('-1 day'));
+    $date_to   = date('Y-m-d', strtotime('-1 day'));
+} else {
+    $date_from = date('Y-m-d');
+    $date_to   = date('Y-m-d');
+}
+
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
 $staffList = [];
@@ -41,7 +52,8 @@ $query = mysqli_query($conn, "
     FROM users u
     LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
         AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-        AND sps.status = 'done'
+        AND sps.status IN ('done', 'paused')
+        AND sps.end_time IS NOT NULL
     WHERE u.role = 'qc' AND u.status = 1
     GROUP BY u.id, u.nama, u.nik
     ORDER BY total_step DESC
@@ -60,7 +72,8 @@ if ($selected_nik !== 'all') {
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc2'
           AND DATE(sps.created_at) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status IN ('done', 'paused')
+        AND sps.end_time IS NOT NULL
         GROUP BY DATE(sps.created_at)
         ORDER BY tgl ASC
     ");
@@ -99,8 +112,9 @@ if ($selected_nik !== 'all') {
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
           AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
-          AND sps.end_time IS NOT NULL
+          AND sps.status IN ('done', 'paused')
+            AND sps.end_time IS NOT NULL
+            ORDER BY sps.start_time ASC
         ORDER BY sps.start_time ASC
     ");
 
@@ -140,7 +154,7 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status = 'done'
+          AND sps.status = ('done', 'paused')
           AND sps.end_time IS NOT NULL
           $whereNik
         ORDER BY u.nama ASC, sps.start_time ASC
