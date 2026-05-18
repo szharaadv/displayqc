@@ -46,9 +46,13 @@ $today_ratio_query = mysqli_query($conn, "
         SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_aktif
     FROM sampling_process_steps sps
     WHERE sps.qc_user_id = $user_id
-      AND DATE(sps.start_time) = '$shift_date'
-      AND sps.status IN ('done', 'paused')
-      AND sps.end_time IS NOT NULL
+    AND (
+        DATE(sps.start_time) = '$shift_date'
+        OR DATE(sps.start_time) = DATE_ADD('$shift_date', INTERVAL 1 DAY)
+    )
+    AND sps.status IN ('done', 'paused')
+    AND sps.end_time IS NOT NULL
+
 ");
 $today_ratio = mysqli_fetch_assoc($today_ratio_query);
 

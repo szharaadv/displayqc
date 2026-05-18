@@ -98,6 +98,7 @@ if ($sel_nik !== 'all') {
         if (!isset($grouped[$key])) {
             $grouped[$key] = [
                 'tgl'         => $tgl,
+                'shift_nama'  => $shift['nama'],
                 'total_detik' => 0,
                 'work_sec'    => $shift['detik'],
             ];
@@ -108,6 +109,7 @@ if ($sel_nik !== 'all') {
     foreach ($grouped as $g) {
         $ratio_data[] = [
             'tgl'         => $g['tgl'],
+            'shift_nama'  => $g['shift_nama'],
             'total_detik' => $g['total_detik'],
             'ratio'       => min(100, round(($g['total_detik'] / $g['work_sec']) * 100, 1)),
         ];
@@ -135,16 +137,14 @@ if ($sel_nik !== 'all') {
         $shift = getShift($r['start_time']);
         $key   = $tgl . '|' . $shift['nama'];
 
-        if (!isset($ratio_by_staff[$uid])) {
-            $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
-        }
         if (!isset($ratio_by_staff[$uid]['days'][$key])) {
-            $ratio_by_staff[$uid]['days'][$key] = [
-                'tgl'         => $tgl,
-                'total_detik' => 0,
-                'work_sec'    => $shift['detik'],
-            ];
-        }
+        $ratio_by_staff[$uid]['days'][$key] = [
+            'tgl'         => $tgl,
+            'shift_nama'  => $shift['nama'],
+            'total_detik' => 0,
+            'work_sec'    => $shift['detik'],
+        ];
+    }
         $ratio_by_staff[$uid]['days'][$key]['total_detik'] += (int)$r['durasi'];
     }
 
@@ -584,20 +584,42 @@ function fmtTime(int $sec): string {
                         <div class="ratio-bar-wrap" style="margin-bottom:12px;">
                             <div class="ratio-bar-bg" style="height:10px;"><div class="ratio-bar-fill ratio-<?php echo $avg_cls; ?>" style="width:<?php echo $rs['avg_ratio']; ?>%"></div></div>
                         </div>
-                        <?php foreach ($rs['days'] as $d):
-                            $dcls = ratioClass($d['ratio']);
-                            $djam = floor($d['total_detik'] / 3600);
-                            $dmnt = floor(($d['total_detik'] % 3600) / 60);
-                        ?>
-                        <div class="ratio-day-row">
-                            <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
-                            <div class="ratio-bar-wrap" style="flex:1;">
-                                <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
-                                <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
-                            </div>
-                            <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
+                        <?php
+            // Group days by shift
+            $days_by_shift = ['Shift 1' => [], 'Shift 2' => [], 'Shift 3' => []];
+            foreach ($rs['days'] as $d) {
+                $sn = $d['shift_nama'] ?? 'Shift 1';
+                $days_by_shift[$sn][] = $d;
+            }
+            ?>
+            <?php foreach ($days_by_shift as $shift_label => $shift_days): ?>
+                <?php if (empty($shift_days)) continue; ?>
+                <div style="margin: 10px 0 4px;">
+                    <span style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;
+                        background:var(--surface2);border:1px solid var(--border);
+                        border-radius:5px;padding:2px 8px;letter-spacing:0.05em;">
+                        📋 <?php echo $shift_label; ?>
+                    </span>
+                </div>
+                <?php foreach ($shift_days as $d):
+                    $dcls = ratioClass($d['ratio']);
+                    $djam = floor($d['total_detik'] / 3600);
+                    $dmnt = floor(($d['total_detik'] % 3600) / 60);
+                ?>
+                <div class="ratio-day-row">
+                    <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
+                    <div class="ratio-bar-wrap" style="flex:1;">
+                        <div class="ratio-bar-bg">
+                            <div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div>
                         </div>
-                        <?php endforeach; ?>
+                        <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
+                    </div>
+                    <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;">
+                        <?php echo "{$djam}j{$dmnt}m"; ?>
+                    </span>
+                </div>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
                     </div>
                     <?php endforeach; ?>
                 </div>
