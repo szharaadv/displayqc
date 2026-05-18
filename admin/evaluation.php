@@ -137,6 +137,9 @@ if ($sel_nik !== 'all') {
         $shift = getShift($r['start_time']);
         $key   = $tgl . '|' . $shift['nama'];
 
+        if (!isset($ratio_by_staff[$uid])) {
+        $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
+    }
         if (!isset($ratio_by_staff[$uid]['days'][$key])) {
         $ratio_by_staff[$uid]['days'][$key] = [
             'tgl'         => $tgl,
