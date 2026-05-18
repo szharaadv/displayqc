@@ -153,6 +153,7 @@ if ($sel_nik !== 'all') {
         foreach ($s['days'] as $d) {
             $days_arr[] = [
                 'tgl'         => $d['tgl'],
+                'shift_nama'  => $d['shift_nama'],
                 'total_detik' => $d['total_detik'],
                 'ratio'       => min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1)),
             ];
