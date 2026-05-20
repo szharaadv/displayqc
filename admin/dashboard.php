@@ -152,9 +152,15 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
-          AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status IN ('done', 'paused')
-          AND sps.end_time IS NOT NULL
+        AND (
+            DATE(sps.start_time) = '$date_from'
+            OR (
+                DATE(sps.start_time) = DATE_ADD('$date_from', INTERVAL 1 DAY)
+                AND TIME(sps.start_time) < '06:30:00'
+            )
+        )
+        AND sps.status IN ('done', 'paused')
+        AND sps.end_time IS NOT NULL
         ORDER BY sps.start_time ASC
     ");
 
@@ -192,10 +198,16 @@ if ($selected_nik !== 'all') {
             TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
-        WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-          AND sps.status IN ('done', 'paused')
-          AND sps.end_time IS NOT NULL
-          $whereNik
+        WHERE (
+            DATE(sps.start_time) = '$date_from'
+            OR (
+                DATE(sps.start_time) = DATE_ADD('$date_from', INTERVAL 1 DAY)
+                AND TIME(sps.start_time) < '06:30:00'
+            )
+        )
+        AND sps.status IN ('done', 'paused')
+        AND sps.end_time IS NOT NULL
+        $whereNik
         ORDER BY u.nama ASC, sps.start_time ASC
     ");
 
