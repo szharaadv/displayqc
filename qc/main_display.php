@@ -26,13 +26,10 @@ $now_tot  = $now_h * 60 + $now_m;
 $now_hari = (int)date('N'); // 1=Sen, 5=Jum, 6=Sab, 7=Min
 
 if ($now_hari === 7 && $now_tot < 315) {
-    // Minggu jam 00:00-05:14 → masih shift 3 Sabtu
     $shift_date = date('Y-m-d', strtotime('-1 day'));
 } elseif ($now_hari === 6 && $now_tot < 390) {
-    // Sabtu jam 00:00-06:29 → masih shift 3 Jumat
     $shift_date = date('Y-m-d', strtotime('-1 day'));
 } elseif ($now_tot < 390) {
-    // Hari lain jam 00:00-06:29 → masih shift 3 kemarin
     $shift_date = date('Y-m-d', strtotime('-1 day'));
 } else {
     $shift_date = date('Y-m-d');
@@ -46,13 +43,15 @@ $today_ratio_query = mysqli_query($conn, "
         SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_aktif
     FROM sampling_process_steps sps
     WHERE sps.qc_user_id = $user_id
-    AND (
-        DATE(sps.start_time) = '$shift_date'
-        OR DATE(sps.start_time) = DATE_ADD('$shift_date', INTERVAL 1 DAY)
-    )
-    AND sps.status IN ('done', 'paused')
-    AND sps.end_time IS NOT NULL
-
+      AND (
+          DATE(sps.start_time) = '$shift_date'
+          OR (
+              DATE(sps.start_time) = DATE_ADD('$shift_date', INTERVAL 1 DAY)
+              AND TIME(sps.start_time) < '06:30:00'
+          )
+      )
+      AND sps.status IN ('done', 'paused')
+      AND sps.end_time IS NOT NULL
 ");
 $today_ratio = mysqli_fetch_assoc($today_ratio_query);
 
@@ -68,7 +67,6 @@ if ($first_start) {
     $hari = (int)date('N', strtotime($first_start));
 
     if ($hari === 5) {
-        // Jumat
         if ($tot >= 390 && $tot < 885) {
             $shift_nama = 'Shift 1'; $shift_detik = 29700;
         } elseif ($tot >= 885 && $tot < 1365) {
@@ -77,7 +75,6 @@ if ($first_start) {
             $shift_nama = 'Shift 3'; $shift_detik = 27900;
         }
     } elseif ($hari === 6) {
-        // Sabtu
         if ($tot >= 390 && $tot < 855) {
             $shift_nama = 'Shift 1'; $shift_detik = 27900;
         } elseif ($tot >= 855 && $tot < 1305) {
@@ -86,7 +83,6 @@ if ($first_start) {
             $shift_nama = 'Shift 3'; $shift_detik = 27000;
         }
     } else {
-        // Senin - Kamis
         if ($tot >= 390 && $tot < 915) {
             $shift_nama = 'Shift 1'; $shift_detik = 28800;
         } elseif ($tot >= 915 && $tot < 1380) {
@@ -180,56 +176,49 @@ $subquery = "
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'CMM'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'CMM'
             AND sps2.status IN ('done', 'paused')
         ) AS cmm_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'RONDCOM'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'RONDCOM'
             AND sps2.status IN ('done', 'paused')
         ) AS rondcom_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'ROUGHNESS'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'ROUGHNESS'
             AND sps2.status IN ('done', 'paused')
         ) AS roughness_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'CONTOUR'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'CONTOUR'
             AND sps2.status IN ('done', 'paused')
         ) AS contour_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'PROFIL PROJECTOR'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'PROFIL PROJECTOR'
             AND sps2.status IN ('done', 'paused')
         ) AS profil_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'MANUAL'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'MANUAL'
             AND sps2.status IN ('done', 'paused')
         ) AS manual_durasi,
 
         (
             SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, sps2.start_time, sps2.end_time)), 0)
             FROM sampling_process_steps sps2
-            WHERE sps2.order_id = so.id
-            AND sps2.qc_machine = 'HARDNESS CHECK'
+            WHERE sps2.order_id = so.id AND sps2.qc_machine = 'HARDNESS CHECK'
             AND sps2.status IN ('done', 'paused')
         ) AS hardness_durasi
 
@@ -240,21 +229,33 @@ $subquery = "
     LEFT JOIN sampling_process_steps sps ON sps.order_id = so.id
 ";
 
-// Query waiting & in_progress — pakai shift_date
+// Query waiting & in_progress — pakai shift_date + shift 3 lintas hari
 $query_mine = mysqli_query($conn, $subquery . "
     WHERE so.created_by = $user_id
       AND so.status IN ('waiting', 'in_progress', 'partial_done')
-      AND DATE(so.created_at) = '$shift_date'
+      AND (
+          DATE(so.created_at) = '$shift_date'
+          OR (
+              DATE(so.created_at) = DATE_SUB('$shift_date', INTERVAL 1 DAY)
+              AND TIME(so.created_at) >= '23:00:00'
+          )
+      )
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
     ORDER BY so.id DESC
 ");
 
-// Query done — pakai shift_date
+// Query done — pakai shift_date + shift 3 lintas hari
 $query_done = mysqli_query($conn, $subquery . "
     WHERE so.status = 'done'
-      AND DATE(so.created_at) = '$shift_date'
+      AND (
+          DATE(so.created_at) = '$shift_date'
+          OR (
+              DATE(so.created_at) = DATE_SUB('$shift_date', INTERVAL 1 DAY)
+              AND TIME(so.created_at) >= '23:00:00'
+          )
+      )
     GROUP BY
         so.id, so.order_code, so.category, so.qty, so.status, so.created_at,
         mp.part_no, mp.part_name, ml.catalog_line, mm.machine_jig_catalog
@@ -481,7 +482,6 @@ function renderCards(array $rows, string $mode = 'waiting') {
                         ⏸ PAUSE
                     </a>
                 <?php endif; ?>
-
                 <button type="button"
                     class="job-btn job-btn-process open-process-modal"
                     data-order-id="<?php echo $row['id']; ?>"
@@ -489,7 +489,6 @@ function renderCards(array $rows, string $mode = 'waiting') {
                     style="margin-top:8px;">
                     LANJUTKAN MESIN
                 </button>
-
                 <a href="final_done.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-done" style="margin-top:8px;">
                     FINAL DONE
                 </a>
@@ -627,10 +626,8 @@ function renderCards(array $rows, string $mode = 'waiting') {
         <div class="modal-box">
             <h3>Pilih Mesin QC</h3>
             <p id="modalOrderText">Order: -</p>
-
             <form action="process_order.php" method="POST">
                 <input type="hidden" name="order_id" id="modal_order_id">
-
                 <label>Pilih Mesin QC</label>
                 <select name="qc_machine" required>
                     <option value="">-- Pilih Mesin QC --</option>
@@ -642,7 +639,6 @@ function renderCards(array $rows, string $mode = 'waiting') {
                     <option value="MANUAL">MANUAL</option>
                     <option value="HARDNESS CHECK">HARDNESS CHECK</option>
                 </select>
-
                 <div class="modal-actions">
                     <button type="submit" class="btn">Lanjut Process</button>
                     <button type="button" class="btn btn-danger" id="closeModal">Batal</button>
@@ -726,73 +722,68 @@ function renderCards(array $rows, string $mode = 'waiting') {
         setInterval(updateLiveProgress, 1000);
         setInterval(() => { if (modal.style.display !== 'flex') window.location.reload(); }, 60000);
 
-        // ── Notifikasi shift hampir habis ─────────────────────────────────────
         function cekShift() {
-        const now  = new Date(new Date() - timeDiff);
-        const h    = now.getHours();
-        const m    = now.getMinutes();
-        const mnt  = h * 60 + m;
-        const hari = now.getDay(); // 0=Min, 5=Jum, 6=Sab
+            const now  = new Date(new Date() - timeDiff);
+            const h    = now.getHours();
+            const m    = now.getMinutes();
+            const mnt  = h * 60 + m;
+            const hari = now.getDay();
 
-        let batas = [];
-        if (hari === 5) {
-            // Jumat
-            batas = [
-                { nama: 'Shift 1', akhir: 14 * 60 + 45 },
-                { nama: 'Shift 2', akhir: 22 * 60 + 45 },
-                { nama: 'Shift 3', akhir:  6 * 60 + 30 },
-            ];
-        } else if (hari === 6) {
-            // Sabtu
-            batas = [
-                { nama: 'Shift 1', akhir: 14 * 60 + 15 },
-                { nama: 'Shift 2', akhir: 21 * 60 + 45 },
-                { nama: 'Shift 3', akhir:  5 * 60 + 15 },
-            ];
-        } else {
-            // Senin - Kamis
-            batas = [
-                { nama: 'Shift 1', akhir: 15 * 60 + 15 },
-                { nama: 'Shift 2', akhir: 23 * 60 +  0 },
-                { nama: 'Shift 3', akhir:  6 * 60 + 30 },
-            ];
-        }
-
-        let notif = document.getElementById('shift-notif');
-
-        for (const shift of batas) {
-            let selisih = shift.akhir - mnt;
-            if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
-                selisih = (shift.akhir + 24 * 60) - mnt;
+            let batas = [];
+            if (hari === 5) {
+                batas = [
+                    { nama: 'Shift 1', akhir: 14 * 60 + 45 },
+                    { nama: 'Shift 2', akhir: 22 * 60 + 45 },
+                    { nama: 'Shift 3', akhir:  6 * 60 + 30 },
+                ];
+            } else if (hari === 6) {
+                batas = [
+                    { nama: 'Shift 1', akhir: 14 * 60 + 15 },
+                    { nama: 'Shift 2', akhir: 21 * 60 + 45 },
+                    { nama: 'Shift 3', akhir:  5 * 60 + 15 },
+                ];
+            } else {
+                batas = [
+                    { nama: 'Shift 1', akhir: 15 * 60 + 15 },
+                    { nama: 'Shift 2', akhir: 23 * 60 +  0 },
+                    { nama: 'Shift 3', akhir:  6 * 60 + 30 },
+                ];
             }
-            if (selisih > 0 && selisih <= 15) {
-                if (!notif) {
-                    notif = document.createElement('div');
-                    notif.id = 'shift-notif';
-                    notif.style.cssText = `
-                        position: fixed;
-                        top: 0; left: 0; right: 0;
-                        background: #f59e0b;
-                        color: #fff;
-                        text-align: center;
-                        padding: 12px;
-                        font-weight: 700;
-                        font-size: 14px;
-                        z-index: 9999;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                    `;
-                    document.body.prepend(notif);
+
+            let notif = document.getElementById('shift-notif');
+
+            for (const shift of batas) {
+                let selisih = shift.akhir - mnt;
+                if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
+                    selisih = (shift.akhir + 24 * 60) - mnt;
                 }
-                notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
-                return;
+                if (selisih > 0 && selisih <= 15) {
+                    if (!notif) {
+                        notif = document.createElement('div');
+                        notif.id = 'shift-notif';
+                        notif.style.cssText = `
+                            position: fixed;
+                            top: 0; left: 0; right: 0;
+                            background: #f59e0b;
+                            color: #fff;
+                            text-align: center;
+                            padding: 12px;
+                            font-weight: 700;
+                            font-size: 14px;
+                            z-index: 9999;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                        `;
+                        document.body.prepend(notif);
+                    }
+                    notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
+                    return;
+                }
             }
+            if (notif) notif.remove();
         }
-        if (notif) notif.remove();
-    }
 
         cekShift();
         setInterval(cekShift, 60000);
-        // ─────────────────────────────────────────────────────────────────────
     </script>
 </body>
 </html>
