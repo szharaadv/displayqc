@@ -29,28 +29,31 @@ if ($sel_nik !== 'all') {
     $whereNik = " AND u.nik = '$nik_esc' ";
 }
 
-// ── Daftar staff QC (kolom-kolom rekap) ───────────────────────────────────────
-$staffList = [];
-$staffQuery = mysqli_query($conn, "SELECT id, nik, nama FROM users WHERE role = 'qc' $whereNik ORDER BY nama ASC");
-while ($s = mysqli_fetch_assoc($staffQuery)) $staffList[] = $s;
+function evalStatus(float $r): string {
+    if ($r >= 80) return 'Produktif';
+    if ($r >= 50) return 'Normal';
+    return 'Perlu Perhatian';
+}
 
-// ── Matrix step harian: [tgl][uid] = jumlah step done ────────────────────────
+// ── Step count per shift per staff: [shift_date|shift_nama][uid] = jumlah ────
 $stepQuery = mysqli_query($conn, "
-    SELECT DATE(sps.start_time) AS tgl, u.id AS uid, COUNT(*) AS jumlah
+    SELECT u.id AS uid, sps.start_time
     FROM sampling_process_steps sps
     JOIN users u ON sps.qc_user_id = u.id
     WHERE u.role = 'qc'
       AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
       AND sps.status = 'done'
       $whereNik
-    GROUP BY DATE(sps.start_time), u.id
 ");
-$stepMatrix = [];
+$stepByShift = []; // [key][uid] = jumlah
 while ($r = mysqli_fetch_assoc($stepQuery)) {
-    $stepMatrix[$r['tgl']][$r['uid']] = (int)$r['jumlah'];
+    $shift = qcShift($r['start_time']);
+    $key   = $shift['shift_date'] . '|' . $shift['nama'];
+    $uid   = $r['uid'];
+    $stepByShift[$key][$uid] = ($stepByShift[$key][$uid] ?? 0) + 1;
 }
 
-// ── Matrix operation ratio per shift: [shift_date|shift_nama][uid] = ratio ───
+// ── Waktu aktif & ratio per shift per staff: [shift_date|shift_nama][uid] ────
 $ratioQuery = mysqli_query($conn, "
     SELECT
         u.id AS uid,
@@ -65,22 +68,33 @@ $ratioQuery = mysqli_query($conn, "
       $whereNik
     ORDER BY sps.start_time ASC
 ");
-$ratioAccum = []; // [key][uid] = ['tgl'=>, 'shift'=>, 'total_detik'=>, 'work_sec'=>]
+$ratioByShift = []; // [key][uid] = ['tgl'=>, 'shift'=>, 'total_detik'=>, 'work_sec'=>]
 while ($r = mysqli_fetch_assoc($ratioQuery)) {
     $shift = qcShift($r['start_time']);
     $key   = $shift['shift_date'] . '|' . $shift['nama'];
     $uid   = $r['uid'];
-    if (!isset($ratioAccum[$key][$uid])) {
-        $ratioAccum[$key][$uid] = [
+    if (!isset($ratioByShift[$key][$uid])) {
+        $ratioByShift[$key][$uid] = [
             'tgl'         => $shift['shift_date'],
             'shift'       => $shift['nama'],
             'total_detik' => 0,
             'work_sec'    => $shift['detik'],
         ];
     }
-    $ratioAccum[$key][$uid]['total_detik'] += (int)$r['durasi'];
+    $ratioByShift[$key][$uid]['total_detik'] += (int)$r['durasi'];
 }
-ksort($ratioAccum);
+ksort($ratioByShift);
+
+// ── Rata-rata ratio per staff (dari semua shift-nya bulan ini) ───────────────
+$ratioSumByUid   = [];
+$ratioCountByUid = [];
+foreach ($ratioByShift as $perUid) {
+    foreach ($perUid as $uid => $d) {
+        $ratio = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
+        $ratioSumByUid[$uid]   = ($ratioSumByUid[$uid]   ?? 0) + $ratio;
+        $ratioCountByUid[$uid] = ($ratioCountByUid[$uid] ?? 0) + 1;
+    }
+}
 
 // ── Summary per staff (total order, step, per mesin) ──────────────────────────
 $summaryQuery = mysqli_query($conn, "
@@ -106,87 +120,78 @@ $summaryQuery = mysqli_query($conn, "
 $summary_data = [];
 while ($row = mysqli_fetch_assoc($summaryQuery)) $summary_data[] = $row;
 
-// ── Sheet 1: Rekap Step Harian ────────────────────────────────────────────────
-$sheetStep = [];
-$sheetStep[] = [xb('LAPORAN REKAP QC BULANAN — ' . strtoupper($period_label))];
-$sheetStep[] = ['Diekspor: ' . date('d M Y H:i')];
-$sheetStep[] = [];
-
-$headerRow = [xb('Tanggal')];
-foreach ($staffList as $s) $headerRow[] = xb($s['nama']);
-$headerRow[] = xb('Total');
-$sheetStep[] = $headerRow;
-
-$totalPerStaff = array_fill_keys(array_column($staffList, 'id'), 0);
-$grandTotal    = 0;
-
-$cursor = strtotime($date_from);
-$endTs  = strtotime($date_to);
-while ($cursor <= $endTs) {
-    $tgl     = date('Y-m-d', $cursor);
-    $row     = [$tgl];
-    $rowSum  = 0;
-    foreach ($staffList as $s) {
-        $jumlah = $stepMatrix[$tgl][$s['id']] ?? 0;
-        $row[]  = $jumlah;
-        $totalPerStaff[$s['id']] += $jumlah;
-        $rowSum += $jumlah;
-    }
-    $row[] = $rowSum;
-    $grandTotal += $rowSum;
-    $sheetStep[] = $row;
-    $cursor = strtotime('+1 day', $cursor);
-}
-
-$totalRow = [xb('Total')];
-foreach ($staffList as $s) $totalRow[] = xb($totalPerStaff[$s['id']]);
-$totalRow[] = xb($grandTotal);
-$sheetStep[] = $totalRow;
-
-// ── Sheet 2: Operation Ratio per Shift ────────────────────────────────────────
-$sheetRatio = [];
-$sheetRatio[] = [xb('OPERATION RATIO (%) PER SHIFT — ' . strtoupper($period_label))];
-$sheetRatio[] = [];
-
-$headerRatio = [xb('Tanggal'), xb('Shift')];
-foreach ($staffList as $s) $headerRatio[] = xb($s['nama']);
-$sheetRatio[] = $headerRatio;
-
-foreach ($ratioAccum as $key => $perUid) {
-    $first = reset($perUid);
-    $row   = [$first['tgl'], $first['shift']];
-    foreach ($staffList as $s) {
-        if (isset($perUid[$s['id']])) {
-            $d = $perUid[$s['id']];
-            $row[] = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
-        } else {
-            $row[] = '';
-        }
-    }
-    $sheetRatio[] = $row;
-}
-
-// ── Sheet 3: Summary Bulanan ───────────────────────────────────────────────────
-$sheetSummary = [];
-$sheetSummary[] = [xb('SUMMARY QC BULANAN — ' . strtoupper($period_label))];
-$sheetSummary[] = [];
-$sheetSummary[] = [
-    xb('Nama'), xb('NIK'), xb('Total Order'), xb('Total Step'),
+// ── Sheet 1: Ringkasan per Staff (1 baris/staff, buat evaluasi cepat) ────────
+$sheetRingkasan = [];
+$sheetRingkasan[] = [xb('LAPORAN EVALUASI QC BULANAN — ' . strtoupper($period_label))];
+$sheetRingkasan[] = ['Diekspor: ' . date('d M Y H:i')];
+$sheetRingkasan[] = [];
+$sheetRingkasan[] = [
+    xb('No'), xb('Nama'), xb('NIK'), xb('Total Order'), xb('Total Step'),
+    xb('Rata-rata Ratio (%)'), xb('Status Evaluasi'),
     xb('CMM'), xb('RONDCOM'), xb('ROUGHNESS'), xb('CONTOUR'),
     xb('PROFIL PROJECTOR'), xb('MANUAL'), xb('HARDNESS CHECK'),
 ];
+
+$no = 1;
 foreach ($summary_data as $s) {
-    $sheetSummary[] = [
-        $s['nama'], $s['nik'], (int)$s['total_order'], (int)$s['total_step'],
+    $uid       = $s['id'];
+    $avg_ratio = isset($ratioSumByUid[$uid]) && $ratioCountByUid[$uid] > 0
+        ? round($ratioSumByUid[$uid] / $ratioCountByUid[$uid], 1)
+        : 0;
+
+    $sheetRingkasan[] = [
+        $no++, $s['nama'], $s['nik'], (int)$s['total_order'], (int)$s['total_step'],
+        $avg_ratio, evalStatus($avg_ratio),
         (int)$s['cmm_count'], (int)$s['rondcom_count'], (int)$s['roughness_count'], (int)$s['contour_count'],
         (int)$s['profil_count'], (int)$s['manual_count'], (int)$s['hardness_count'],
     ];
 }
 
-$filename = 'Laporan_QC_' . $month_names[$sel_month] . '_' . $sel_year . '.xlsx';
+// ── Sheet 2: Detail Harian per Staff (list vertikal, urut nama lalu tanggal) ──
+$sheetDetail = [];
+$sheetDetail[] = [xb('DETAIL HARIAN QC — ' . strtoupper($period_label))];
+$sheetDetail[] = [];
+$sheetDetail[] = [
+    xb('Nama'), xb('NIK'), xb('Tanggal'), xb('Shift'),
+    xb('Total Step'), xb('Waktu Aktif (jam)'), xb('Operation Ratio (%)'), xb('Status'),
+];
+
+$detailRows = [];
+foreach ($ratioByShift as $key => $perUid) {
+    foreach ($perUid as $uid => $d) {
+        $ratio  = min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1));
+        $jamAktif = round($d['total_detik'] / 3600, 2);
+        $detailRows[] = [
+            'uid'    => $uid,
+            'tgl'    => $d['tgl'],
+            'shift'  => $d['shift'],
+            'step'   => $stepByShift[$key][$uid] ?? 0,
+            'jam'    => $jamAktif,
+            'ratio'  => $ratio,
+        ];
+    }
+}
+
+$namaByUid = [];
+foreach ($summary_data as $s) $namaByUid[$s['id']] = ['nama' => $s['nama'], 'nik' => $s['nik']];
+
+usort($detailRows, function ($a, $b) use ($namaByUid) {
+    $namaA = $namaByUid[$a['uid']]['nama'] ?? '';
+    $namaB = $namaByUid[$b['uid']]['nama'] ?? '';
+    return $namaA <=> $namaB ?: $a['tgl'] <=> $b['tgl'];
+});
+
+foreach ($detailRows as $d) {
+    $info = $namaByUid[$d['uid']] ?? ['nama' => '-', 'nik' => '-'];
+    $sheetDetail[] = [
+        $info['nama'], $info['nik'], $d['tgl'], $d['shift'],
+        $d['step'], $d['jam'], $d['ratio'], evalStatus($d['ratio']),
+    ];
+}
+
+$filename = 'Laporan_Evaluasi_QC_' . $month_names[$sel_month] . '_' . $sel_year . '.xlsx';
 
 xlsxKirim($filename, [
-    'Rekap Step Harian' => $sheetStep,
-    'Operation Ratio'   => $sheetRatio,
-    'Summary Bulanan'   => $sheetSummary,
+    'Ringkasan per Staff' => $sheetRingkasan,
+    'Detail Harian'       => $sheetDetail,
 ]);

@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
 include '../config/shift.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -415,27 +416,40 @@ function renderCards(array $rows, string $mode = 'waiting') {
                 data-order-code="<?php echo htmlspecialchars($row['order_code']); ?>">
                 PROCESS
             </button>
-            <a href="delete_order.php?id=<?php echo $row['id']; ?>"
-                class="job-btn"
-                style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
-                onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
-                🗑 HAPUS ORDER
-            </a>
+            <form method="POST" action="delete_order.php" style="margin-top:8px;"
+                onsubmit="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                <?php echo csrfField(); ?>
+                <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                <button type="submit" class="job-btn" style="width:100%;background:#CC0000;color:#fff;font-size:11px;">
+                    🗑 HAPUS ORDER
+                </button>
+            </form>
 
             <?php elseif ($mode === 'progress'): ?>
                 <?php if ($lastStatus === 'paused'): ?>
-                    <a href="pause_order.php?resume=1&id=<?php echo $row['id']; ?>"
-                        class="job-btn" style="background:#059669;color:#fff;">
-                        ▶ RESUME
-                    </a>
+                    <form method="POST" action="pause_order.php">
+                        <?php echo csrfField(); ?>
+                        <input type="hidden" name="resume" value="1">
+                        <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                        <button type="submit" class="job-btn" style="width:100%;background:#059669;color:#fff;">
+                            ▶ RESUME
+                        </button>
+                    </form>
                 <?php elseif (!empty($row['start_time'])): ?>
-                    <a href="finish_order.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-progress">
-                        SELESAIKAN STEP
-                    </a>
-                    <a href="pause_order.php?id=<?php echo $row['id']; ?>" class="job-btn"
-                        style="margin-top:8px;background:#f59e0b;color:#fff;">
-                        ⏸ PAUSE
-                    </a>
+                    <form method="POST" action="finish_order.php">
+                        <?php echo csrfField(); ?>
+                        <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                        <button type="submit" class="job-btn job-btn-progress" style="width:100%;">
+                            SELESAIKAN STEP
+                        </button>
+                    </form>
+                    <form method="POST" action="pause_order.php" style="margin-top:8px;">
+                        <?php echo csrfField(); ?>
+                        <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                        <button type="submit" class="job-btn" style="width:100%;background:#f59e0b;color:#fff;">
+                            ⏸ PAUSE
+                        </button>
+                    </form>
                 <?php endif; ?>
                 <button type="button"
                     class="job-btn job-btn-process open-process-modal"
@@ -444,24 +458,32 @@ function renderCards(array $rows, string $mode = 'waiting') {
                     style="margin-top:8px;">
                     LANJUTKAN MESIN
                 </button>
-                <a href="final_done.php?id=<?php echo $row['id']; ?>" class="job-btn job-btn-done" style="margin-top:8px;">
-                    FINAL DONE
-                </a>
-                <a href="delete_order.php?id=<?php echo $row['id']; ?>"
-                    class="job-btn"
-                    style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
-                    onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
-                    🗑 HAPUS ORDER
-                </a>
+                <form method="POST" action="final_done.php" style="margin-top:8px;">
+                    <?php echo csrfField(); ?>
+                    <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                    <button type="submit" class="job-btn job-btn-done" style="width:100%;">
+                        FINAL DONE
+                    </button>
+                </form>
+                <form method="POST" action="delete_order.php" style="margin-top:8px;"
+                    onsubmit="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                    <?php echo csrfField(); ?>
+                    <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                    <button type="submit" class="job-btn" style="width:100%;background:#CC0000;color:#fff;font-size:11px;">
+                        🗑 HAPUS ORDER
+                    </button>
+                </form>
 
             <?php else: ?>
                 <div class="job-btn job-btn-done">DONE</div>
-                <a href="delete_order.php?id=<?php echo $row['id']; ?>"
-                    class="job-btn"
-                    style="margin-top:8px;background:#CC0000;color:#fff;font-size:11px;"
-                    onclick="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
-                    🗑 HAPUS ORDER
-                </a>
+                <form method="POST" action="delete_order.php" style="margin-top:8px;"
+                    onsubmit="return confirm('Yakin hapus order ini? Data proses juga ikut terhapus.');">
+                    <?php echo csrfField(); ?>
+                    <input type="hidden" name="id" value="<?php echo $row['id']; ?>">
+                    <button type="submit" class="job-btn" style="width:100%;background:#CC0000;color:#fff;font-size:11px;">
+                        🗑 HAPUS ORDER
+                    </button>
+                </form>
             <?php endif; ?>
         </div>
         <?php
@@ -582,6 +604,7 @@ function renderCards(array $rows, string $mode = 'waiting') {
             <h3>Pilih Mesin QC</h3>
             <p id="modalOrderText">Order: -</p>
             <form action="process_order.php" method="POST">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="order_id" id="modal_order_id">
                 <label>Pilih Mesin QC</label>
                 <select name="qc_machine" required>

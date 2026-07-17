@@ -1,6 +1,7 @@
 <?php
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 
 if (!isset($_SESSION['id'])) {
     header("Location: ../auth/login.php");
@@ -24,6 +25,7 @@ $machines = mysqli_query($conn, "SELECT * FROM master_machines ORDER BY category
         <h2>Create Order Sampling</h2>
 
         <form action="simpan_order.php" method="POST">
+            <?php echo csrfField(); ?>
             <label>Category</label>
             <select name="category" id="category" required>
                 <option value="">-- Pilih Category --</option>

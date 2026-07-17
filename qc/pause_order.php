@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -10,8 +11,10 @@ if (!isset($_SESSION['id'])) {
     exit;
 }
 
-$order_id  = isset($_GET['id'])     ? (int)$_GET['id']  : 0;
-$is_resume = isset($_GET['resume']) && $_GET['resume'] == '1';
+csrfVerify();
+
+$order_id  = isset($_POST['id'])     ? (int)$_POST['id']  : 0;
+$is_resume = isset($_POST['resume']) && $_POST['resume'] == '1';
 $user_id   = (int)$_SESSION['id'];
 
 if ($order_id <= 0) {

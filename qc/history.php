@@ -15,9 +15,13 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$selected_date = isset($_GET['tanggal']) && $_GET['tanggal'] !== ''
-    ? $_GET['tanggal']
-    : date('Y-m-d');
+function qcValidDate(?string $v): ?string {
+    if ($v === null || $v === '') return null;
+    $d = DateTime::createFromFormat('Y-m-d', $v);
+    return ($d && $d->format('Y-m-d') === $v) ? $v : null;
+}
+
+$selected_date = qcValidDate($_GET['tanggal'] ?? null) ?? date('Y-m-d');
 
 $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
 

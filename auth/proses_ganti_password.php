@@ -1,7 +1,10 @@
 <?php
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
+
+csrfVerify();
 
 $nik              = trim($_POST['nik']               ?? '');
 $password_lama    = trim($_POST['password_lama']     ?? '');

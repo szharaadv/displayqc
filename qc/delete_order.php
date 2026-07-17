@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 
 if (!isset($_SESSION['id'])) {
@@ -15,7 +16,9 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$order_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+csrfVerify();
+
+$order_id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $user_id  = (int)$_SESSION['id'];
 
 if ($order_id <= 0) {

@@ -14,13 +14,14 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-$tanggal_dari = isset($_GET['tanggal_dari']) && $_GET['tanggal_dari'] !== ''
-    ? $_GET['tanggal_dari']
-    : date('Y-m-d');
+function qcValidDate(?string $v): ?string {
+    if ($v === null || $v === '') return null;
+    $d = DateTime::createFromFormat('Y-m-d', $v);
+    return ($d && $d->format('Y-m-d') === $v) ? $v : null;
+}
 
-$tanggal_sampai = isset($_GET['tanggal_sampai']) && $_GET['tanggal_sampai'] !== ''
-    ? $_GET['tanggal_sampai']
-    : date('Y-m-d');
+$tanggal_dari   = qcValidDate($_GET['tanggal_dari'] ?? null) ?? date('Y-m-d');
+$tanggal_sampai = qcValidDate($_GET['tanggal_sampai'] ?? null) ?? date('Y-m-d');
 
 $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
 

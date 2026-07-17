@@ -3,12 +3,15 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
 include '../config/shift.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 
 if (!isset($_SESSION['id'])) {
     header("Location: ../auth/login.php");
     exit;
 }
+
+csrfVerify();
 
 $category   = mysqli_real_escape_string($conn, $_POST['category']);
 $part_id    = (int) $_POST['part_id'];

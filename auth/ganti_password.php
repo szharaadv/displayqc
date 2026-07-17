@@ -1,5 +1,6 @@
 <?php
 session_start();
+include '../config/csrf.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -40,6 +41,7 @@ session_start();
             <?php endif; ?>
 
             <form action="proses_ganti_password.php" method="POST">
+                <?php echo csrfField(); ?>
                 <div class="form-group">
                     <label class="form-label">NIK</label>
                     <input type="text" name="nik" class="form-input" placeholder="Masukkan NIK" required autofocus>

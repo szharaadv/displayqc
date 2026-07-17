@@ -1,5 +1,6 @@
 <?php
 session_start();
+include '../config/csrf.php';
 
 // Kalau sudah login, redirect ke menu
 if (isset($_SESSION['id'])) {
@@ -39,6 +40,7 @@ if (isset($_SESSION['id'])) {
             <?php endif; ?>
 
             <form action="proses_login.php" method="POST">
+                <?php echo csrfField(); ?>
                 <div class="form-group">
                     <label class="form-label">NIK</label>
                     <input type="text" name="nik" class="form-input" placeholder="Masukkan NIK" required autofocus>

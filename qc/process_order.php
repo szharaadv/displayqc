@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -14,6 +15,8 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     header("Location: display.php");
     exit;
 }
+
+csrfVerify();
 
 $order_id   = isset($_POST['order_id'])   ? (int) $_POST['order_id']                                     : 0;
 $qc_machine = isset($_POST['qc_machine']) ? mysqli_real_escape_string($conn, trim($_POST['qc_machine'])) : '';

@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -22,8 +23,9 @@ $msg_success = '';
 $msg_error   = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrfVerify();
     $action   = $_POST['action'] ?? '';
-    
+
     if ($action === 'save') {
         $category      = mysqli_real_escape_string($conn, trim($_POST['category'] ?? ''));
         $qc_machine    = mysqli_real_escape_string($conn, trim($_POST['qc_machine'] ?? ''));
@@ -250,6 +252,7 @@ foreach ($ct_data as $ct) {
                 Tambah / Update Standard Cycle Time
             </div>
             <form method="POST">
+                <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="save">
                 <div class="form-grid">
                     <div class="form-group">
@@ -337,6 +340,7 @@ foreach ($ct_data as $ct) {
                                 <td class="mono" style="font-size:11px;color:var(--text3);"><?php echo date('d/m/Y H:i', strtotime($ct['updated_at'])); ?></td>
                                 <td>
                                     <form method="POST" onsubmit="return confirm('Hapus standard ini?');" style="display:inline;">
+                                        <?php echo csrfField(); ?>
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="del_id" value="<?php echo $ct['id']; ?>">
                                         <button type="submit" class="btn-delete">Hapus</button>

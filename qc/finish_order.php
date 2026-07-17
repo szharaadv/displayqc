@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/csrf.php';
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
 if (!isset($_SESSION['id'])) {
@@ -14,12 +15,14 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'qc') {
     exit;
 }
 
-if (!isset($_GET['id'])) {
+csrfVerify();
+
+if (!isset($_POST['id'])) {
     header("Location: main_display.php?section=progress");
     exit;
 }
 
-$order_id = (int) $_GET['id'];
+$order_id = (int) $_POST['id'];
 
 /* step aktif terakhir */
 $stepQuery = mysqli_query($conn, "
