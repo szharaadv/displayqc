@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/shift.php';
 /** @var mysqli $conn */
 
 mysqli_query($conn, "SET time_zone = '+07:00'");
@@ -11,32 +12,18 @@ if (!isset($_SESSION['id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-// ── Deteksi shift date ────────────────────────────────────────────────────────
-// ── Deteksi shift date ────────────────────────────────────────────
-$now_h    = (int)date('H');
-$now_m    = (int)date('i');
-$now_tot  = $now_h * 60 + $now_m;
-$now_hari = (int)date('N'); // 1=Sen, 5=Jum, 6=Sab, 7=Min
+// Shift yang sedang berjalan — batasnya dari config/shift.php
+$shift_kini = qcShift();
+$date_from  = $shift_kini['shift_date'];
+$date_to    = $shift_kini['shift_date'];
 
-// Tentukan batas shift 3 berakhir (dalam menit dari 00:00)
-// Shift 3 Sabtu berakhir 05:15 → hari Minggu jam 00:00-05:14 masih shift 3 Sabtu
-// Shift 3 Jumat berakhir 06:30 → hari Sabtu jam 00:00-06:29 masih shift 3 Jumat
-// Shift 3 Senin-Kamis berakhir 06:30 → jam 00:00-06:29 masih shift 3 kemarin
-
-if ($now_hari === 7 && $now_tot < 315) {
-    $date_from = date('Y-m-d', strtotime('-1 day'));
-    $date_to   = date('Y-m-d', strtotime('-1 day'));
-} elseif ($now_hari === 6 && $now_tot < 390) {
-    $date_from = date('Y-m-d', strtotime('-1 day'));
-    $date_to   = date('Y-m-d', strtotime('-1 day'));
-} elseif ($now_tot < 390) {
-    $date_from = date('Y-m-d', strtotime('-1 day'));
-    $date_to   = date('Y-m-d', strtotime('-1 day'));
-} else {
-    $date_from = date('Y-m-d');
-    $date_to   = date('Y-m-d');
-}
-// ─────────────────────────────────────────────────────────────────────────────
+// Rentang penuh hari kerja $date_from: dari shift 1 mulai sampai shift 3 selesai
+// (selesainya sudah lewat tengah malam). Dipakai untuk memfilter step, supaya
+// bagian shift 3 yang jatuh setelah tengah malam tidak terbuang dan ekor shift 3
+// hari sebelumnya tidak ikut terhitung.
+$shift_hari_ini = qcShiftPadaHari(strtotime($date_from));
+$window_mulai   = date('Y-m-d H:i:s', $shift_hari_ini[0]['mulai_ts']);
+$window_selesai = date('Y-m-d H:i:s', $shift_hari_ini[count($shift_hari_ini) - 1]['selesai_ts']);
 
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
@@ -65,13 +52,8 @@ $query = mysqli_query($conn, "
         SUM(CASE WHEN sps.qc_machine = 'HARDNESS CHECK'   AND sps.status = 'done' THEN 1 ELSE 0 END) AS hardness_count
     FROM users u
     LEFT JOIN sampling_process_steps sps ON sps.qc_user_id = u.id
-        AND (
-            DATE(sps.start_time) = '$date_from'
-            OR (
-                DATE(sps.start_time) = DATE_ADD('$date_from', INTERVAL 1 DAY)
-                AND TIME(sps.start_time) < '06:30:00'
-            )
-        )
+        AND sps.start_time >= '$window_mulai'
+        AND sps.start_time <  '$window_selesai'
         AND sps.status = 'done'
     WHERE u.role = 'qc' AND u.status = 1
     GROUP BY u.id, u.nama, u.nik
@@ -90,66 +72,13 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc2'
-          AND (
-              DATE(sps.start_time) = '$date_from'
-              OR (
-                  DATE(sps.start_time) = DATE_ADD('$date_from', INTERVAL 1 DAY)
-                  AND TIME(sps.start_time) < '06:30:00'
-              )
-          )
+          AND sps.start_time >= '$window_mulai'
+          AND sps.start_time <  '$window_selesai'
           AND sps.status = 'done'
         GROUP BY DATE(sps.start_time)
         ORDER BY tgl ASC
     ");
     while ($d = mysqli_fetch_assoc($dailyQuery)) $daily_data[] = $d;
-}
-
-// ── Shift Definition ─────────────────────────────────────────────────────────
-function getShift(string $start_time): array {
-    $h    = (int)date('H', strtotime($start_time));
-    $m    = (int)date('i', strtotime($start_time));
-    $tot  = $h * 60 + $m;
-    $hari = (int)date('N', strtotime($start_time)); // 1=Sen, 5=Jum, 6=Sab
-
-    if ($hari === 5) {
-        // ── JUMAT ──────────────────────────────────────────────────
-        // Shift 1: 06:30 - 14:45 → 29.700 detik
-        // Shift 2: 14:45 - 22:45 → 28.800 detik
-        // Shift 3: 22:45 - 06:29 → 27.900 detik
-        if ($tot >= 390 && $tot < 885) {
-            return ['nama' => 'Shift 1', 'detik' => 29700];
-        } elseif ($tot >= 885 && $tot < 1365) {
-            return ['nama' => 'Shift 2', 'detik' => 28800];
-        } else {
-            return ['nama' => 'Shift 3', 'detik' => 27900];
-        }
-
-    } elseif ($hari === 6) {
-        // ── SABTU ──────────────────────────────────────────────────
-        // Shift 1: 06:30 - 14:15 → 27.900 detik
-        // Shift 2: 14:15 - 21:45 → 27.000 detik
-        // Shift 3: 21:45 - 05:14 → 27.000 detik
-        if ($tot >= 390 && $tot < 855) {
-            return ['nama' => 'Shift 1', 'detik' => 27900];
-        } elseif ($tot >= 855 && $tot < 1305) {
-            return ['nama' => 'Shift 2', 'detik' => 27000];
-        } else {
-            return ['nama' => 'Shift 3', 'detik' => 27000];
-        }
-
-    } else {
-        // ── SENIN - KAMIS ───────────────────────────────────────────
-        // Shift 1: 06:30 - 15:14 → 28.800 detik
-        // Shift 2: 15:15 - 22:59 → 27.000 detik
-        // Shift 3: 23:00 - 06:29 → 24.300 detik
-        if ($tot >= 390 && $tot < 915) {
-            return ['nama' => 'Shift 1', 'detik' => 28800];
-        } elseif ($tot >= 915 && $tot < 1380) {
-            return ['nama' => 'Shift 2', 'detik' => 27000];
-        } else {
-            return ['nama' => 'Shift 3', 'detik' => 24300];
-        }
-    }
 }
 
 // ── Operation Ratio Queries ───────────────────────────────────────────────────
@@ -164,7 +93,8 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
-          AND DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+          AND sps.start_time >= '$window_mulai'
+          AND sps.start_time <  '$window_selesai'
           AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
         ORDER BY sps.start_time ASC
@@ -172,12 +102,11 @@ if ($selected_nik !== 'all') {
 
     $grouped = [];
     while ($r = mysqli_fetch_assoc($ratioQ)) {
-        $tgl   = date('Y-m-d', strtotime($r['start_time']));
-        $shift = getShift($r['start_time']);
-        $key   = $tgl . '|' . $shift['nama'];
+        $shift = qcShift($r['start_time']);
+        $key   = $shift['shift_date'] . '|' . $shift['nama'];
         if (!isset($grouped[$key])) {
             $grouped[$key] = [
-                'tgl'         => $tgl,
+                'tgl'         => $shift['shift_date'],
                 'shift_nama'  => $shift['nama'],
                 'work_sec'    => $shift['detik'],
                 'total_detik' => 0,
@@ -204,7 +133,8 @@ if ($selected_nik !== 'all') {
             TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
-        WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+        WHERE sps.start_time >= '$window_mulai'
+          AND sps.start_time <  '$window_selesai'
           AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
           $whereNik
@@ -214,16 +144,15 @@ if ($selected_nik !== 'all') {
     $ratio_by_staff = [];
     while ($r = mysqli_fetch_assoc($ratioAllQ)) {
         $uid   = $r['id'];
-        $tgl   = date('Y-m-d', strtotime($r['start_time']));
-        $shift = getShift($r['start_time']);
-        $key   = $tgl . '|' . $shift['nama'];
+        $shift = qcShift($r['start_time']);
+        $key   = $shift['shift_date'] . '|' . $shift['nama'];
 
         if (!isset($ratio_by_staff[$uid])) {
             $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
         }
         if (!isset($ratio_by_staff[$uid]['days'][$key])) {
             $ratio_by_staff[$uid]['days'][$key] = [
-                'tgl'         => $tgl,
+                'tgl'         => $shift['shift_date'],
                 'shift_nama'  => $shift['nama'],
                 'work_sec'    => $shift['detik'],
                 'total_detik' => 0,
@@ -462,6 +391,10 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 </select>
             </div>
             <button type="submit" class="btn-filter">Tampilkan</button>
+            <a class="btn-filter" style="background:var(--green);text-decoration:none;display:inline-flex;align-items:center;"
+               href="export_evaluation.php?month=<?php echo (int)date('m'); ?>&year=<?php echo (int)date('Y'); ?>&nik=<?php echo urlencode($selected_nik); ?>">
+                ⬇ Export Laporan Bulanan (.xlsx)
+            </a>
         </form>
 
         <div class="summary-grid">
@@ -507,36 +440,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
-                <?php
-                    if ($now_hari === 5) {
-                        // Jumat
-                        if ($now_tot >= 390 && $now_tot < 885) {
-                            $shift_aktif = 'Shift 1 (06:30-14:45) | Efektif 8,25 jam';
-                        } elseif ($now_tot >= 885 && $now_tot < 1365) {
-                            $shift_aktif = 'Shift 2 (14:45-22:45) | Efektif 8 jam';
-                        } else {
-                            $shift_aktif = 'Shift 3 (22:45-06:30) | Efektif 7,75 jam';
-                        }
-                    } elseif ($now_hari === 6) {
-                        // Sabtu
-                        if ($now_tot >= 390 && $now_tot < 855) {
-                            $shift_aktif = 'Shift 1 (06:30-14:15) | Efektif 7,75 jam';
-                        } elseif ($now_tot >= 855 && $now_tot < 1305) {
-                            $shift_aktif = 'Shift 2 (14:15-21:45) | Efektif 7,5 jam';
-                        } else {
-                            $shift_aktif = 'Shift 3 (21:45-05:15) | Efektif 7,5 jam';
-                        }
-                    } else {
-                        // Senin - Kamis
-                        if ($now_tot >= 390 && $now_tot < 915) {
-                            $shift_aktif = 'Shift 1 (06:30-15:14) | Efektif 8 jam';
-                        } elseif ($now_tot >= 915 && $now_tot < 1380) {
-                            $shift_aktif = 'Shift 2 (15:15-22:59) | Efektif 7,5 jam';
-                        } else {
-                            $shift_aktif = 'Shift 3 (23:00-06:29) | Efektif 6,75 jam';
-                        }
-                    }
-                    ?>
+                <?php $shift_aktif = qcLabelShift($shift_kini); ?>
                 <span style="font-size:11px;color:var(--text3);margin-left:8px;">
                     Shift Aktif: <strong><?php echo $shift_aktif; ?></strong> &nbsp;|&nbsp;
                     <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;

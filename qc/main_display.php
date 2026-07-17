@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/shift.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -19,37 +20,26 @@ $section  = isset($_GET['section']) ? $_GET['section'] : 'job';
 $today    = date('Y-m-d');
 $user_id  = (int)$_SESSION['id'];
 
-// ── Deteksi tanggal shift ─────────────────────────────────────────────────────
-$now_h    = (int)date('H');
-$now_m    = (int)date('i');
-$now_tot  = $now_h * 60 + $now_m;
-$now_hari = (int)date('N'); // 1=Sen, 5=Jum, 6=Sab, 7=Min
+// Shift yang sedang berjalan — semua batas waktu berasal dari config/shift.php
+$shift         = qcShift();
+$shift_date    = $shift['shift_date'];
+$shift_nama    = $shift['nama'];
+$shift_detik   = $shift['detik'];
+$shift_mulai   = date('Y-m-d H:i:s', $shift['mulai_ts']);
+$shift_selesai = date('Y-m-d H:i:s', $shift['selesai_ts']);
 
-if ($now_hari === 7 && $now_tot < 315) {
-    $shift_date = date('Y-m-d', strtotime('-1 day'));
-} elseif ($now_hari === 6 && $now_tot < 390) {
-    $shift_date = date('Y-m-d', strtotime('-1 day'));
-} elseif ($now_tot < 390) {
-    $shift_date = date('Y-m-d', strtotime('-1 day'));
-} else {
-    $shift_date = date('Y-m-d');
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Personal Operation Ratio Hari Ini ────────────────────────────────────────
+// ── Personal Operation Ratio Shift Ini ───────────────────────────────────────
+// Dibatasi rentang shift yang sedang berjalan. Memfilter pakai DATE() saja
+// membuat shift 3 ikut menjumlah kerja shift 1 & 2 hari sebelumnya, karena
+// shift_date-nya mundur ke kemarin — ratio langsung mentok 100%.
 $today_ratio_query = mysqli_query($conn, "
     SELECT
         MIN(sps.start_time) AS first_start,
         SUM(TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time)) AS total_aktif
     FROM sampling_process_steps sps
     WHERE sps.qc_user_id = $user_id
-      AND (
-          DATE(sps.start_time) = '$shift_date'
-          OR (
-              DATE(sps.start_time) = DATE_ADD('$shift_date', INTERVAL 1 DAY)
-              AND TIME(sps.start_time) < '06:30:00'
-          )
-      )
+      AND sps.start_time >= '$shift_mulai'
+      AND sps.start_time <  '$shift_selesai'
       AND sps.status IN ('done', 'paused')
       AND sps.end_time IS NOT NULL
 ");
@@ -57,41 +47,6 @@ $today_ratio = mysqli_fetch_assoc($today_ratio_query);
 
 $first_start  = $today_ratio['first_start'] ?? null;
 $total_aktif  = (int)($today_ratio['total_aktif'] ?? 0);
-
-$shift_nama   = '-';
-$shift_detik  = 28800;
-if ($first_start) {
-    $h    = (int)date('H', strtotime($first_start));
-    $m    = (int)date('i', strtotime($first_start));
-    $tot  = $h * 60 + $m;
-    $hari = (int)date('N', strtotime($first_start));
-
-    if ($hari === 5) {
-        if ($tot >= 390 && $tot < 885) {
-            $shift_nama = 'Shift 1'; $shift_detik = 29700;
-        } elseif ($tot >= 885 && $tot < 1365) {
-            $shift_nama = 'Shift 2'; $shift_detik = 28800;
-        } else {
-            $shift_nama = 'Shift 3'; $shift_detik = 27900;
-        }
-    } elseif ($hari === 6) {
-        if ($tot >= 390 && $tot < 855) {
-            $shift_nama = 'Shift 1'; $shift_detik = 27900;
-        } elseif ($tot >= 855 && $tot < 1305) {
-            $shift_nama = 'Shift 2'; $shift_detik = 27000;
-        } else {
-            $shift_nama = 'Shift 3'; $shift_detik = 27000;
-        }
-    } else {
-        if ($tot >= 390 && $tot < 915) {
-            $shift_nama = 'Shift 1'; $shift_detik = 28800;
-        } elseif ($tot >= 915 && $tot < 1380) {
-            $shift_nama = 'Shift 2'; $shift_detik = 27000;
-        } else {
-            $shift_nama = 'Shift 3'; $shift_detik = 24300;
-        }
-    }
-}
 
 $ratio_personal = $shift_detik > 0 ? min(100, round(($total_aktif / $shift_detik) * 100, 1)) : 0;
 $aktif_jam      = floor($total_aktif / 3600);
@@ -722,62 +677,37 @@ function renderCards(array $rows, string $mode = 'waiting') {
         setInterval(updateLiveProgress, 1000);
         setInterval(() => { if (modal.style.display !== 'flex') window.location.reload(); }, 60000);
 
-        function cekShift() {
-            const now  = new Date(new Date() - timeDiff);
-            const h    = now.getHours();
-            const m    = now.getMinutes();
-            const mnt  = h * 60 + m;
-            const hari = now.getDay();
+        // Batas shift datang dari config/shift.php lewat PHP, jadi tidak perlu
+        // disalin ulang di sini dan tidak bisa lagi melenceng dari perhitungan server.
+        const shiftNama    = <?php echo json_encode($shift_nama); ?>;
+        const shiftSelesai = new Date("<?php echo $shift_selesai; ?>".replace(' ', 'T'));
 
-            let batas = [];
-            if (hari === 5) {
-                batas = [
-                    { nama: 'Shift 1', akhir: 14 * 60 + 45 },
-                    { nama: 'Shift 2', akhir: 22 * 60 + 45 },
-                    { nama: 'Shift 3', akhir:  6 * 60 + 30 },
-                ];
-            } else if (hari === 6) {
-                batas = [
-                    { nama: 'Shift 1', akhir: 14 * 60 + 15 },
-                    { nama: 'Shift 2', akhir: 21 * 60 + 45 },
-                    { nama: 'Shift 3', akhir:  5 * 60 + 15 },
-                ];
-            } else {
-                batas = [
-                    { nama: 'Shift 1', akhir: 15 * 60 + 15 },
-                    { nama: 'Shift 2', akhir: 23 * 60 +  0 },
-                    { nama: 'Shift 3', akhir:  6 * 60 + 30 },
-                ];
-            }
+        function cekShift() {
+            const now     = new Date(new Date() - timeDiff);
+            const selisih = Math.floor((shiftSelesai - now) / 60000);
 
             let notif = document.getElementById('shift-notif');
 
-            for (const shift of batas) {
-                let selisih = shift.akhir - mnt;
-                if (shift.nama === 'Shift 3' && mnt > 12 * 60) {
-                    selisih = (shift.akhir + 24 * 60) - mnt;
+            if (selisih > 0 && selisih <= 15) {
+                if (!notif) {
+                    notif = document.createElement('div');
+                    notif.id = 'shift-notif';
+                    notif.style.cssText = `
+                        position: fixed;
+                        top: 0; left: 0; right: 0;
+                        background: #f59e0b;
+                        color: #fff;
+                        text-align: center;
+                        padding: 12px;
+                        font-weight: 700;
+                        font-size: 14px;
+                        z-index: 9999;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    `;
+                    document.body.prepend(notif);
                 }
-                if (selisih > 0 && selisih <= 15) {
-                    if (!notif) {
-                        notif = document.createElement('div');
-                        notif.id = 'shift-notif';
-                        notif.style.cssText = `
-                            position: fixed;
-                            top: 0; left: 0; right: 0;
-                            background: #f59e0b;
-                            color: #fff;
-                            text-align: center;
-                            padding: 12px;
-                            font-weight: 700;
-                            font-size: 14px;
-                            z-index: 9999;
-                            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                        `;
-                        document.body.prepend(notif);
-                    }
-                    notif.textContent = `⚠️ ${shift.nama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
-                    return;
-                }
+                notif.textContent = `⚠️ ${shiftNama} akan berakhir dalam ${selisih} menit! Segera selesaikan sampling kamu.`;
+                return;
             }
             if (notif) notif.remove();
         }

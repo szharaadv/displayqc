@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
+include '../config/shift.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -53,27 +54,6 @@ $summary_data = [];
 while ($row = mysqli_fetch_assoc($summaryQuery)) $summary_data[] = $row;
 
 // ── Operation Ratio ──────────────────────────────────────────────────────────
-function getShift(string $start_time): array {
-    $h    = (int)date('H', strtotime($start_time));
-    $m    = (int)date('i', strtotime($start_time));
-    $tot  = $h * 60 + $m;
-    $hari = (int)date('N', strtotime($start_time));
-
-    if ($hari === 5) {
-        if ($tot >= 390 && $tot < 885)       return ['nama' => 'Shift 1', 'detik' => 29700];
-        elseif ($tot >= 885 && $tot < 1365)  return ['nama' => 'Shift 2', 'detik' => 28800];
-        else                                  return ['nama' => 'Shift 3', 'detik' => 27900];
-    } elseif ($hari === 6) {
-        if ($tot >= 390 && $tot < 855)       return ['nama' => 'Shift 1', 'detik' => 27900];
-        elseif ($tot >= 855 && $tot < 1305)  return ['nama' => 'Shift 2', 'detik' => 27000];
-        else                                  return ['nama' => 'Shift 3', 'detik' => 27000];
-    } else {
-        if ($tot >= 390 && $tot < 915)       return ['nama' => 'Shift 1', 'detik' => 28800];
-        elseif ($tot >= 915 && $tot < 1380)  return ['nama' => 'Shift 2', 'detik' => 27000];
-        else                                  return ['nama' => 'Shift 3', 'detik' => 24300];
-    }
-}
-
 $ratio_data = [];
 if ($sel_nik !== 'all') {
     $nik_esc2 = mysqli_real_escape_string($conn, $sel_nik);
@@ -92,12 +72,11 @@ if ($sel_nik !== 'all') {
 
     $grouped = [];
     while ($r = mysqli_fetch_assoc($ratioQ)) {
-        $tgl   = date('Y-m-d', strtotime($r['start_time']));
-        $shift = getShift($r['start_time']);
-        $key   = $tgl . '|' . $shift['nama'];
+        $shift = qcShift($r['start_time']);
+        $key   = $shift['shift_date'] . '|' . $shift['nama'];
         if (!isset($grouped[$key])) {
             $grouped[$key] = [
-                'tgl'         => $tgl,
+                'tgl'         => $shift['shift_date'],
                 'shift_nama'  => $shift['nama'],
                 'total_detik' => 0,
                 'work_sec'    => $shift['detik'],
@@ -133,21 +112,20 @@ if ($sel_nik !== 'all') {
     $ratio_by_staff = [];
     while ($r = mysqli_fetch_assoc($ratioAllQ)) {
         $uid   = $r['id'];
-        $tgl   = date('Y-m-d', strtotime($r['start_time']));
-        $shift = getShift($r['start_time']);
-        $key   = $tgl . '|' . $shift['nama'];
+        $shift = qcShift($r['start_time']);
+        $key   = $shift['shift_date'] . '|' . $shift['nama'];
 
         if (!isset($ratio_by_staff[$uid])) {
-        $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
-    }
+            $ratio_by_staff[$uid] = ['nama' => $r['nama'], 'nik' => $r['nik'], 'days' => []];
+        }
         if (!isset($ratio_by_staff[$uid]['days'][$key])) {
-        $ratio_by_staff[$uid]['days'][$key] = [
-            'tgl'         => $tgl,
-            'shift_nama'  => $shift['nama'],
-            'total_detik' => 0,
-            'work_sec'    => $shift['detik'],
-        ];
-    }
+            $ratio_by_staff[$uid]['days'][$key] = [
+                'tgl'         => $shift['shift_date'],
+                'shift_nama'  => $shift['nama'],
+                'total_detik' => 0,
+                'work_sec'    => $shift['detik'],
+            ];
+        }
         $ratio_by_staff[$uid]['days'][$key]['total_detik'] += (int)$r['durasi'];
     }
 
@@ -487,6 +465,10 @@ function fmtTime(int $sec): string {
                 </select>
             </div>
             <button type="submit" class="btn-filter">Tampilkan</button>
+            <a class="btn-filter" style="background:var(--green);text-decoration:none;display:inline-flex;align-items:center;"
+               href="export_evaluation.php?month=<?php echo $sel_month; ?>&year=<?php echo $sel_year; ?>&nik=<?php echo urlencode($sel_nik); ?>">
+                ⬇ Export Excel (.xlsx)
+            </a>
         </form>
 
         <!-- Summary Cards -->
