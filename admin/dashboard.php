@@ -174,6 +174,7 @@ if ($selected_nik !== 'all') {
     }
     unset($s);
     $ratio_daily_data = array_values($ratio_by_staff);
+    usort($ratio_daily_data, fn($a, $b) => $b['avg_ratio'] <=> $a['avg_ratio']);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
