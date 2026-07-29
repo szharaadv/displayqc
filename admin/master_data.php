@@ -200,9 +200,16 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                     </select>
                 </div>
             </form>
+            <div class="filter-group">
+                <label class="filter-label">Cari</label>
+                <input type="text" id="cari" class="filter-input" style="min-width:260px;"
+                       placeholder="Ketik untuk menyaring…" autocomplete="off">
+            </div>
             <div class="spacer"></div>
             <button type="button" class="btn btn-red" onclick="bukaTambah()">+ Tambah <?php echo $cfg['label']; ?></button>
         </div>
+
+        <p id="cariInfo" style="font-size:12px;color:var(--text2);margin-bottom:12px;display:none;"></p>
 
         <div class="table-card">
             <table class="m-table">
@@ -218,13 +225,16 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                 </thead>
                 <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty">Belum ada data.</td></tr>
+                        <tr><td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty"><?php echo ($cari !== '' || $filter_kat !== 'all') ? 'Tidak ada data yang cocok dengan pencarian/filter.' : 'Belum ada data.'; ?></td></tr>
                     <?php else: foreach ($rows as $r):
                         // Data untuk dibawa ke modal edit
                         $edit = ['id' => $r['id'], 'category' => $r['category']];
                         foreach ($cfg['kolom'] as $col => $_) $edit[$col] = $r[$col];
+                        // Teks yang bisa dicari oleh live filter: kategori + semua kolom data
+                        $teks_cari = $r['category'];
+                        foreach ($cfg['kolom'] as $col => $_) $teks_cari .= ' ' . $r[$col];
                     ?>
-                        <tr>
+                        <tr class="baris-data" data-cari="<?php echo htmlspecialchars(strtolower($teks_cari)); ?>">
                             <td><span class="cat-badge"><?php echo htmlspecialchars($r['category']); ?></span></td>
                             <?php foreach ($cfg['kolom'] as $col => $_): ?>
                                 <td><?php echo htmlspecialchars($r[$col]); ?></td>
@@ -246,6 +256,9 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
+                    <tr id="barisKosongCari" style="display:none;">
+                        <td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty">Tidak ada data yang cocok dengan pencarian.</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -305,6 +318,36 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 
     function tutupModal() { modal.style.display = 'none'; }
     modal.addEventListener('click', e => { if (e.target === modal) tutupModal(); });
+
+    // ── Live search: saring baris langsung saat mengetik ──────────────────────
+    const inputCari  = document.getElementById('cari');
+    const infoCari   = document.getElementById('cariInfo');
+    const barisData  = [...document.querySelectorAll('.baris-data')];
+    const barisKosong = document.getElementById('barisKosongCari');
+
+    function jalankanCari() {
+        const kata = inputCari.value.trim().toLowerCase();
+        let cocok = 0;
+
+        barisData.forEach(tr => {
+            const tampil = kata === '' || tr.dataset.cari.includes(kata);
+            tr.style.display = tampil ? '' : 'none';
+            if (tampil) cocok++;
+        });
+
+        // Baris "tidak ada hasil" hanya muncul kalau sedang mencari & nol cocok
+        barisKosong.style.display = (kata !== '' && cocok === 0) ? '' : 'none';
+
+        if (kata === '') {
+            infoCari.style.display = 'none';
+        } else {
+            infoCari.style.display = '';
+            infoCari.innerHTML = 'Hasil untuk "<strong>' + inputCari.value.replace(/</g,'&lt;') +
+                                 '</strong>" — ' + cocok + ' data ditemukan.';
+        }
+    }
+
+    inputCari.addEventListener('input', jalankanCari);
 </script>
 </body>
 </html>
