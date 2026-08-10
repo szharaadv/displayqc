@@ -11,6 +11,89 @@
 date_default_timezone_set('Asia/Jakarta');
 
 /**
+ * Nilai default (fallback) — dipakai kalau tabel master_shifts belum ada atau
+ * belum lengkap, supaya sistem tetap jalan. Kunci: weekday (Senin-Kamis & Minggu),
+ * friday, saturday. Format tiap shift sama seperti keluaran qcBatasShift().
+ */
+function qcShiftDefault(): array {
+    return [
+        'weekday' => [
+            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 915,  'detik' => 28800],
+            ['nama' => 'Shift 2', 'mulai' => 915,  'selesai' => 1380, 'detik' => 27000],
+            ['nama' => 'Shift 3', 'mulai' => 1380, 'selesai' => 1830, 'detik' => 24300],
+        ],
+        'friday' => [
+            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 885,  'detik' => 29700],
+            ['nama' => 'Shift 2', 'mulai' => 885,  'selesai' => 1365, 'detik' => 28800],
+            ['nama' => 'Shift 3', 'mulai' => 1365, 'selesai' => 1830, 'detik' => 27900],
+        ],
+        'saturday' => [
+            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 855,  'detik' => 27900],
+            ['nama' => 'Shift 2', 'mulai' => 855,  'selesai' => 1305, 'detik' => 27000],
+            ['nama' => 'Shift 3', 'mulai' => 1305, 'selesai' => 1755, 'detik' => 27000],
+        ],
+    ];
+}
+
+/** Ubah 'HH:MM:SS' menjadi menit sejak 00:00. */
+function qcJamKeMenit(string $jam): int {
+    [$h, $m] = array_map('intval', explode(':', $jam));
+    return $h * 60 + $m;
+}
+
+/**
+ * Muat definisi shift dari tabel master_shifts (via $conn global), sekali per
+ * request. Kalau tabel tidak ada, gagal, atau tidak lengkap (butuh 9 baris:
+ * 3 tipe hari × 3 shift), pakai qcShiftDefault() supaya tidak pernah error.
+ */
+function qcMuatShift(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+
+    $cache = qcShiftDefault();
+
+    global $conn;
+    if (isset($conn) && $conn instanceof mysqli) {
+        // Bungkus try/catch: kalau tabel master_shifts belum dibuat (sebelum
+        // migrasi dijalankan), mysqli mode-exception akan melempar — jangan
+        // sampai membuat seluruh halaman crash; cukup pakai default.
+        try {
+            $res = mysqli_query($conn, "SELECT hari_tipe, shift_no, jam_mulai, jam_selesai, efektif_menit FROM master_shifts");
+        } catch (\Throwable $e) {
+            $res = false;
+        }
+        if ($res && mysqli_num_rows($res) === 9) {
+            $tmp = [];
+            while ($r = mysqli_fetch_assoc($res)) {
+                $mulai   = qcJamKeMenit($r['jam_mulai']);
+                $selesai = qcJamKeMenit($r['jam_selesai']);
+                if ($selesai <= $mulai) $selesai += 1440; // lewat tengah malam
+                $tmp[$r['hari_tipe']][(int)$r['shift_no']] = [
+                    'nama'    => 'Shift ' . (int)$r['shift_no'],
+                    'mulai'   => $mulai,
+                    'selesai' => $selesai,
+                    'detik'   => (int)$r['efektif_menit'] * 60,
+                ];
+            }
+            // Pastikan ketiga tipe hari & ketiga shift lengkap sebelum dipakai
+            $lengkap = true;
+            foreach (['weekday', 'friday', 'saturday'] as $t) {
+                for ($n = 1; $n <= 3; $n++) {
+                    if (!isset($tmp[$t][$n])) { $lengkap = false; break 2; }
+                }
+            }
+            if ($lengkap) {
+                foreach ($tmp as $t => $shifts) {
+                    ksort($shifts);
+                    $cache[$t] = array_values($shifts);
+                }
+            }
+        }
+    }
+    return $cache;
+}
+
+/**
  * Batas tiap shift dalam menit sejak 00:00 pada hari mulai shift.
  * Nilai 'selesai' boleh lebih dari 1440 (= lewat tengah malam).
  * 'detik' = durasi kerja efektif, dipakai sebagai pembagi operation ratio.
@@ -18,26 +101,10 @@ date_default_timezone_set('Asia/Jakarta');
  * @param int $hari 1=Senin .. 7=Minggu — hari MULAI shift
  */
 function qcBatasShift(int $hari): array {
-    if ($hari === 5) { // Jumat — 06:30 / 14:45 / 22:45, shift 3 selesai 06:30
-        return [
-            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 885,  'detik' => 29700],
-            ['nama' => 'Shift 2', 'mulai' => 885,  'selesai' => 1365, 'detik' => 28800],
-            ['nama' => 'Shift 3', 'mulai' => 1365, 'selesai' => 1830, 'detik' => 27900],
-        ];
-    }
-    if ($hari === 6) { // Sabtu — 06:30 / 14:15 / 21:45, shift 3 selesai 05:15
-        return [
-            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 855,  'detik' => 27900],
-            ['nama' => 'Shift 2', 'mulai' => 855,  'selesai' => 1305, 'detik' => 27000],
-            ['nama' => 'Shift 3', 'mulai' => 1305, 'selesai' => 1755, 'detik' => 27000],
-        ];
-    }
-    // Senin–Kamis & Minggu — 06:30 / 15:15 / 23:00, shift 3 selesai 06:30
-    return [
-        ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 915,  'detik' => 28800],
-        ['nama' => 'Shift 2', 'mulai' => 915,  'selesai' => 1380, 'detik' => 27000],
-        ['nama' => 'Shift 3', 'mulai' => 1380, 'selesai' => 1830, 'detik' => 24300],
-    ];
+    $cfg = qcMuatShift();
+    if ($hari === 5) return $cfg['friday'];
+    if ($hari === 6) return $cfg['saturday'];
+    return $cfg['weekday']; // Senin–Kamis & Minggu
 }
 
 /** Ketiga shift milik satu hari, sudah jadi timestamp absolut. */

@@ -380,56 +380,7 @@ function fmtTime(int $sec): string {
 </head>
 <body>
 
-<aside class="sidebar">
-    <div class="sidebar-logo">
-        <div class="sidebar-logo-badge">
-            <div class="logo-icon">
-                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            </div>
-            <div class="logo-text">
-                <span class="logo-name">QC Display</span>
-                <span class="logo-sub">Yanmar · Manager</span>
-            </div>
-        </div>
-    </div>
-    <nav class="sidebar-nav">
-        <div class="nav-label">Menu</div>
-        <a class="nav-item" href="dashboard.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-            Dashboard
-        </a>
-        <a class="nav-item active" href="evaluation.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            Evaluation
-        </a>
-        <a class="nav-item" href="../qc/history.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-            History QC
-        </a>
-        <a class="nav-item" href="../menu.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-            Main Menu
-        </a>
-        <a class="nav-item" href="cycle_time.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
-            Cycle Time
-        </a>
-        <a class="nav-item" href="master_data.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0018 0V5"/><path d="M3 12a9 3 0 0018 0"/></svg>
-            Data Master
-        </a>
-    </nav>
-    <div class="sidebar-footer">
-        <div class="user-card">
-            <div class="user-avatar"><?php echo isset($_SESSION['nama']) ? strtoupper(substr($_SESSION['nama'], 0, 2)) : 'AD'; ?></div>
-            <div class="user-info">
-                <div class="user-name"><?php echo isset($_SESSION['nama']) ? htmlspecialchars($_SESSION['nama']) : 'Admin'; ?></div>
-                <div class="user-role">Manager</div>
-            </div>
-            <a href="../auth/logout.php" class="btn-logout-sm">Logout</a>
-        </div>
-    </div>
-</aside>
+<?php $active_nav = 'evaluation'; include __DIR__ . '/_sidebar.php'; ?>
 
 <div class="main">
     <div class="topbar">
