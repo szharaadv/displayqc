@@ -184,6 +184,39 @@ if ($selected_nik !== 'all') {
     $ratio_daily_data = array_values($ratio_by_staff);
     usort($ratio_daily_data, fn($a, $b) => $b['avg_ratio'] <=> $a['avg_ratio']);
 }
+
+// ── Detail step per staff (untuk panel yang bisa dibuka di kartu ratio) ────────
+// Rincian tiap order yang dikerjakan: kategori/part, mesin, jam mulai-selesai.
+$detail_by_nik = [];
+$detailQ = mysqli_query($conn, "
+    SELECT
+        u.nik,
+        so.order_code,
+        so.category,
+        mp.part_no,
+        mp.part_name,
+        ml.catalog_line,
+        mm.machine_jig_catalog,
+        sps.qc_machine,
+        sps.start_time,
+        sps.end_time,
+        TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
+    FROM sampling_process_steps sps
+    JOIN users u                 ON sps.qc_user_id = u.id
+    JOIN sampling_orders so      ON sps.order_id   = so.id
+    LEFT JOIN master_parts mp    ON so.part_id      = mp.id
+    LEFT JOIN master_lines ml    ON so.line_id      = ml.id
+    LEFT JOIN master_machines mm ON so.machine_id   = mm.id
+    WHERE sps.start_time >= '$window_mulai'
+      AND sps.start_time <  '$window_selesai'
+      AND sps.status IN ('done', 'paused')
+      AND sps.end_time IS NOT NULL
+      $whereNik
+    ORDER BY u.nik, sps.start_time ASC
+");
+while ($d = mysqli_fetch_assoc($detailQ)) {
+    $detail_by_nik[$d['nik']][] = $d;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 $total_all_step  = array_sum(array_column($staff_data, 'total_step'));
@@ -327,7 +360,34 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
         .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
         .ratio-day-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
         .ratio-day-row:last-child { border-bottom: none; }
-        .ratio-grid-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+        .ratio-grid-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+        /* Kartu ratio bisa diklik untuk membuka pop-up detail */
+        .ratio-staff-card.expandable { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+        .ratio-staff-card.expandable:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+        .ratio-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--red); margin-top: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .ratio-toggle svg { width: 12px; height: 12px; }
+        .ratio-detail { display: none; } /* sumber isi modal, tidak ditampilkan inline */
+        .ratio-detail-empty { font-size: 12px; color: var(--text3); padding: 8px 0; }
+
+        /* Pop-up detail dengan latar blur */
+        .detail-overlay { display: none; position: fixed; inset: 0; z-index: 600; background: rgba(17,24,39,0.45); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); align-items: center; justify-content: center; padding: 24px; }
+        .detail-overlay.show { display: flex; }
+        .detail-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-md); width: 100%; max-width: 520px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; animation: detailPop .16s ease-out; }
+        @keyframes detailPop { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+        .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+        .detail-head-name { font-size: 16px; font-weight: 700; color: var(--text); }
+        .detail-head-sub { font-size: 11px; color: var(--text3); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+        .detail-close { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; width: 30px; height: 30px; cursor: pointer; font-size: 16px; color: var(--text2); line-height: 1; flex-shrink: 0; }
+        .detail-close:hover { background: var(--red-soft); color: var(--red); border-color: var(--red-mid); }
+        .detail-body { padding: 8px 20px 18px; overflow-y: auto; }
+        .ratio-detail-item { padding: 7px 0; border-bottom: 1px solid var(--border); }
+        .ratio-detail-item:last-child { border-bottom: none; }
+        .ratio-detail-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .ratio-detail-time { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; color: var(--text); }
+        .ratio-detail-dur { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--red); }
+        .ratio-detail-part { font-size: 12px; font-weight: 600; color: var(--text); margin-top: 2px; }
+        .ratio-detail-meta { font-size: 10px; color: var(--text3); margin-top: 1px; }
+        .ratio-cat { display: inline-block; padding: 1px 6px; border-radius: 20px; font-size: 9px; font-weight: 700; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); margin-right: 4px; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -477,8 +537,10 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                 <div class="ratio-grid-all">
                     <?php foreach ($ratio_daily_data as $rs):
                         $avg_cls = ratioClass($rs['avg_ratio']);
+                        $detail  = $detail_by_nik[$rs['nik']] ?? [];
+                        $jml_step = count($detail);
                     ?>
-                    <div class="ratio-staff-card">
+                    <div class="ratio-staff-card expandable" onclick="openDetail(this)">
                         <div class="ratio-staff-header">
                             <div>
                                 <div class="ratio-staff-name"><?php echo htmlspecialchars($rs['nama']); ?></div>
@@ -505,6 +567,42 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
                             <span style="font-size:10px;color:var(--text3);min-width:44px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
                         </div>
                         <?php endforeach; ?>
+
+                        <div class="ratio-toggle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v7H3V3h7"/></svg>
+                            <span>Lihat detail order (<?php echo $jml_step; ?>)</span>
+                        </div>
+
+                        <div class="ratio-detail">
+                            <?php if (empty($detail)): ?>
+                                <div class="ratio-detail-empty">Tidak ada detail order.</div>
+                            <?php else: foreach ($detail as $it):
+                                $ds  = (int)$it['durasi'];
+                                $dm  = floor($ds / 60);
+                                $dss = $ds % 60;
+                            ?>
+                            <div class="ratio-detail-item">
+                                <div class="ratio-detail-top">
+                                    <span class="ratio-detail-time">
+                                        <?php echo date('H:i', strtotime($it['start_time'])); ?>–<?php echo date('H:i', strtotime($it['end_time'])); ?>
+                                    </span>
+                                    <span class="ratio-detail-dur"><?php echo "{$dm}m {$dss}s"; ?></span>
+                                </div>
+                                <div class="ratio-detail-part">
+                                    <span class="ratio-cat"><?php echo htmlspecialchars($it['category']); ?></span>
+                                    <?php echo htmlspecialchars($it['part_name'] ?: '(part tidak diketahui)'); ?>
+                                    <?php if (!empty($it['part_no'])): ?>
+                                        <span style="color:var(--text3);font-weight:400;font-size:10px;">(<?php echo htmlspecialchars($it['part_no']); ?>)</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="ratio-detail-meta">
+                                    <?php echo htmlspecialchars($it['qc_machine'] ?: '—'); ?>
+                                    <?php if (!empty($it['catalog_line'])): ?> · <?php echo htmlspecialchars($it['catalog_line']); ?><?php endif; ?>
+                                    <?php if (!empty($it['machine_jig_catalog'])): ?> · <?php echo htmlspecialchars($it['machine_jig_catalog']); ?><?php endif; ?>
+                                </div>
+                            </div>
+                            <?php endforeach; endif; ?>
+                        </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -587,6 +685,20 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
     </div>
 </div>
 
+<!-- Pop-up detail order per staff (latar blur) -->
+<div id="detailOverlay" class="detail-overlay">
+    <div class="detail-box">
+        <div class="detail-head">
+            <div>
+                <div class="detail-head-name" id="detailNama">-</div>
+                <div class="detail-head-sub" id="detailSub">-</div>
+            </div>
+            <button type="button" class="detail-close" onclick="closeDetail()">&times;</button>
+        </div>
+        <div class="detail-body" id="detailBody"></div>
+    </div>
+</div>
+
 <script>
 document.querySelectorAll('.counter').forEach(el => {
     const target = parseInt(el.dataset.target);
@@ -655,7 +767,29 @@ new Chart(document.getElementById('chartHarian'), {
 });
 <?php endif; ?>
 
-setTimeout(() => { window.location.reload(); }, 30000);
+// Buka pop-up detail order untuk satu staff (isi diambil dari .ratio-detail
+// tersembunyi di kartu, latar di-blur oleh .detail-overlay).
+const detailOverlay = document.getElementById('detailOverlay');
+
+function openDetail(card) {
+    document.getElementById('detailNama').textContent = card.querySelector('.ratio-staff-name')?.textContent ?? '';
+    document.getElementById('detailSub').textContent  = 'NIK ' + (card.querySelector('.ratio-staff-nik')?.textContent ?? '');
+    document.getElementById('detailBody').innerHTML   = card.querySelector('.ratio-detail')?.innerHTML ?? '';
+    detailOverlay.classList.add('show');
+}
+
+function closeDetail() {
+    detailOverlay.classList.remove('show');
+}
+
+detailOverlay.addEventListener('click', e => { if (e.target === detailOverlay) closeDetail(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+// Auto-reload tiap 30 detik, TAPI jangan reload saat pop-up detail terbuka
+// (biar tidak menutup sendiri ketika manager sedang membaca).
+setInterval(() => {
+    if (!detailOverlay.classList.contains('show')) window.location.reload();
+}, 30000);
 
 let scrollSpeed = 0.3;
 let scrolling   = true;
