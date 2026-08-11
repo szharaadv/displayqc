@@ -222,7 +222,11 @@ while ($d = mysqli_fetch_assoc($detailQ)) {
 $total_all_step  = array_sum(array_column($staff_data, 'total_step'));
 $total_all_order = array_sum(array_column($staff_data, 'total_order'));
 $top_staff       = !empty($staff_data) ? $staff_data[0]['nama'] : '-';
-$active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 0));
+
+// Hanya staff yang benar-benar mengerjakan order pada hari ini — kartu & chart
+// per-staff dibangun dari daftar ini, jadi yang 0 order/step tidak muncul.
+$staff_aktif  = array_values(array_filter($staff_data, fn($s) => (int)$s['total_step'] > 0));
+$active_staff = count($staff_aktif);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -614,8 +618,11 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             <div class="section-head-line"></div>
             <div class="section-head-title">Detail per Staff</div>
         </div>
+        <?php if (empty($staff_aktif)): ?>
+            <p style="color:var(--text3);font-size:13px;margin-bottom:24px;">Belum ada staff yang mengerjakan order pada periode ini.</p>
+        <?php else: ?>
         <div class="staff-grid">
-            <?php foreach ($staff_data as $staff):
+            <?php foreach ($staff_aktif as $staff):
                 $initials = strtoupper(substr($staff['nama'], 0, 2));
                 $isZero = $staff['total_step'] == 0;
             ?>
@@ -657,6 +664,7 @@ $active_staff    = count(array_filter($staff_data, fn($s) => $s['total_step'] > 
             </div>
             <?php endforeach; ?>
         </div>
+        <?php endif; ?>
 
         <?php if ($selected_nik === 'all'): ?>
         <div class="charts-grid">
@@ -722,9 +730,9 @@ const chartOpts = {
 };
 
 <?php if ($selected_nik === 'all'): ?>
-const staffNames  = <?php echo json_encode(array_column($staff_data, 'nama')); ?>;
-const totalSteps  = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_step'))); ?>;
-const totalOrders = <?php echo json_encode(array_map('intval', array_column($staff_data, 'total_order'))); ?>;
+const staffNames  = <?php echo json_encode(array_column($staff_aktif, 'nama')); ?>;
+const totalSteps  = <?php echo json_encode(array_map('intval', array_column($staff_aktif, 'total_step'))); ?>;
+const totalOrders = <?php echo json_encode(array_map('intval', array_column($staff_aktif, 'total_order'))); ?>;
 new Chart(document.getElementById('chartStep'), {
     type: 'bar',
     data: { labels: staffNames, datasets: [{ data: totalSteps, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
