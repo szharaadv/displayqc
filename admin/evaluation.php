@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
 include '../config/shift.php';
+include '../config/ratio_ui.php';
 /** @var mysqli $conn */
 mysqli_query($conn, "SET time_zone = '+07:00'");
 
@@ -80,6 +81,8 @@ if ($sel_nik !== 'all') {
                 'shift_nama'  => $shift['nama'],
                 'total_detik' => 0,
                 'work_sec'    => $shift['detik'],
+                'mulai_ts'    => $shift['mulai_ts'],
+                'selesai_ts'  => $shift['selesai_ts'],
             ];
         }
         $grouped[$key]['total_detik'] += (int)$r['durasi'];
@@ -90,6 +93,9 @@ if ($sel_nik !== 'all') {
             'tgl'         => $g['tgl'],
             'shift_nama'  => $g['shift_nama'],
             'total_detik' => $g['total_detik'],
+            'work_sec'    => $g['work_sec'],
+            'mulai_ts'    => $g['mulai_ts'],
+            'selesai_ts'  => $g['selesai_ts'],
             'ratio'       => min(100, round(($g['total_detik'] / $g['work_sec']) * 100, 1)),
         ];
     }
@@ -124,6 +130,8 @@ if ($sel_nik !== 'all') {
                 'shift_nama'  => $shift['nama'],
                 'total_detik' => 0,
                 'work_sec'    => $shift['detik'],
+                'mulai_ts'    => $shift['mulai_ts'],
+                'selesai_ts'  => $shift['selesai_ts'],
             ];
         }
         $ratio_by_staff[$uid]['days'][$key]['total_detik'] += (int)$r['durasi'];
@@ -136,6 +144,9 @@ if ($sel_nik !== 'all') {
                 'tgl'         => $d['tgl'],
                 'shift_nama'  => $d['shift_nama'],
                 'total_detik' => $d['total_detik'],
+                'work_sec'    => $d['work_sec'],
+                'mulai_ts'    => $d['mulai_ts'],
+                'selesai_ts'  => $d['selesai_ts'],
                 'ratio'       => min(100, round(($d['total_detik'] / $d['work_sec']) * 100, 1)),
             ];
         }
@@ -464,12 +475,13 @@ function fmtTime(int $sec): string {
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;">Basis 8 jam kerja/hari &nbsp;|&nbsp;
+                <span style="font-size:11px;color:var(--text3);margin-left:8px;">
                     <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
                     <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
                     <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
                 </span>
             </div>
+            <?php echo qcRatioUiStyle(); ?>
 
             <?php if ($sel_nik !== 'all'): ?>
                 <?php if (empty($ratio_data)): ?>
@@ -481,7 +493,7 @@ function fmtTime(int $sec): string {
                         <div class="section-head-title" style="margin:0;"><?php echo htmlspecialchars($summary_data[0]['nama'] ?? ''); ?> — Ratio per Hari</div>
                     </div>
                     <table class="dash-table">
-                        <thead><tr><th>Tanggal</th><th>Waktu Aktif</th><th style="min-width:200px;">Operation Ratio</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Tanggal</th><th>Waktu Aktif</th><th style="min-width:210px;">Operation Ratio <span style="font-weight:400;text-transform:none;color:var(--text3);">(aktif ⁄ efektif)</span></th><th>Status</th></tr></thead>
                         <tbody>
                             <?php foreach ($ratio_data as $rd):
                                 $cls = ratioClass($rd['ratio']);
@@ -495,7 +507,9 @@ function fmtTime(int $sec): string {
                                     <div class="ratio-bar-wrap">
                                         <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
                                         <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
+                                        <?php echo qcRatioHelp((int)$rd['mulai_ts'], (int)$rd['selesai_ts'], (int)$rd['work_sec']); ?>
                                     </div>
+                                    <?php echo qcRatioFraction((int)$rd['total_detik'], (int)$rd['work_sec']); ?>
                                 </td>
                                 <td><span class="ratio-badge <?php echo $cls; ?>"><?php echo ratioLabel($rd['ratio']); ?></span></td>
                             </tr>
@@ -545,8 +559,12 @@ function fmtTime(int $sec): string {
                 </div>
                 <?php foreach ($shift_days as $d):
                     $dcls = ratioClass($d['ratio']);
-                    $djam = floor($d['total_detik'] / 3600);
-                    $dmnt = floor(($d['total_detik'] % 3600) / 60);
+                    $d_efektif   = (int)($d['work_sec'] ?? 0);
+                    $d_dur_menit = (int)round((($d['selesai_ts'] ?? 0) - ($d['mulai_ts'] ?? 0)) / 60);
+                    $d_ist       = max(0, $d_dur_menit - (int)round($d_efektif / 60));
+                    $d_title     = date('H:i', (int)($d['mulai_ts'] ?? 0)) . '–' . date('H:i', (int)($d['selesai_ts'] ?? 0))
+                                 . ' · durasi ' . qcFmtDurasiMenit($d_dur_menit)
+                                 . ' − istirahat ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' efektif';
                 ?>
                 <div class="ratio-day-row">
                     <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
@@ -556,8 +574,8 @@ function fmtTime(int $sec): string {
                         </div>
                         <span class="ratio-val <?php echo $dcls; ?>"><?php echo $d['ratio']; ?>%</span>
                     </div>
-                    <span style="font-size:10px;color:var(--text3);min-width:48px;text-align:right;">
-                        <?php echo "{$djam}j{$dmnt}m"; ?>
+                    <span style="font-size:10px;color:var(--text3);min-width:82px;text-align:right;font-family:'JetBrains Mono',monospace;" title="<?php echo htmlspecialchars($d_title); ?>">
+                        <?php echo qcFmtDurasiDetik((int)$d['total_detik']); ?> <span style="opacity:.6;">⁄</span> <?php echo qcFmtDurasiDetik($d_efektif); ?>
                     </span>
                 </div>
                 <?php endforeach; ?>

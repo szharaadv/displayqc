@@ -15,7 +15,7 @@ if (!isset($_SESSION['id']) || ($_SESSION['role'] ?? '') !== 'admin') {
 // adanya. Kalau tabel kosong, isi dari default lewat qcMuatShift().
 $tersimpan = [];
 try {
-    $q = mysqli_query($conn, "SELECT hari_tipe, shift_no, jam_mulai, jam_selesai, efektif_menit FROM master_shifts");
+    $q = mysqli_query($conn, "SELECT hari_tipe, shift_no, jam_mulai, jam_selesai, istirahat_menit, efektif_menit FROM master_shifts");
     while ($q && $r = mysqli_fetch_assoc($q)) {
         $tersimpan[$r['hari_tipe']][(int)$r['shift_no']] = $r;
     }
@@ -25,30 +25,35 @@ try {
 }
 
 $LABEL_TIPE = [
-    'weekday'  => 'Senin – Kamis & Minggu',
+    'weekday'  => 'Senin – Kamis',
     'friday'   => 'Jumat',
     'saturday' => 'Sabtu',
+    'sunday'   => 'Minggu',
 ];
 
-// Ambil nilai efektif (dalam jam) & jam mulai/selesai untuk sebuah sel form,
-// jatuh ke default qcMuatShift() bila belum ada di DB.
+// Ambil jam mulai/selesai + istirahat (menit) untuk sebuah sel form, jatuh ke
+// default qcMuatShift() bila belum ada di DB. Jam efektif TIDAK diinput lagi —
+// dihitung otomatis (durasi shift dikurangi istirahat) di sisi klien & server.
 $def = qcMuatShift();
 function nilaiShift(array $tersimpan, array $def, string $tipe, int $no): array {
     if (isset($tersimpan[$tipe][$no])) {
         $r = $tersimpan[$tipe][$no];
         return [
-            'mulai'   => substr($r['jam_mulai'], 0, 5),
-            'selesai' => substr($r['jam_selesai'], 0, 5),
-            'jam'     => rtrim(rtrim(number_format($r['efektif_menit'] / 60, 2, '.', ''), '0'), '.'),
+            'mulai'     => substr($r['jam_mulai'], 0, 5),
+            'selesai'   => substr($r['jam_selesai'], 0, 5),
+            'istirahat' => (int)($r['istirahat_menit'] ?? 0),
         ];
     }
-    // fallback dari default (menit → HH:MM)
+    // fallback dari default (menit → HH:MM); istirahat = durasi − efektif
     $d = $def[$tipe][$no - 1];
+    $span = $d['selesai'] - $d['mulai'];
+    if ($span < 0) $span += 1440;
+    $istirahat = max(0, $span - (int)round($d['detik'] / 60));
     $mm = $d['mulai'] % 1440; $ss = $d['selesai'] % 1440;
     return [
-        'mulai'   => sprintf('%02d:%02d', intdiv($mm, 60), $mm % 60),
-        'selesai' => sprintf('%02d:%02d', intdiv($ss, 60), $ss % 60),
-        'jam'     => rtrim(rtrim(number_format($d['detik'] / 3600, 2, '.', ''), '0'), '.'),
+        'mulai'     => sprintf('%02d:%02d', intdiv($mm, 60), $mm % 60),
+        'selesai'   => sprintf('%02d:%02d', intdiv($ss, 60), $ss % 60),
+        'istirahat' => $istirahat,
     ];
 }
 
@@ -60,7 +65,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setting Shift — QC Yanmar</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
         :root {
@@ -95,13 +100,15 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         .main { margin-left:var(--sidebar-w); flex:1; min-height:100vh; }
         .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:0 28px; height:56px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
         .topbar-title { font-size:15px; font-weight:700; }
-        .content { padding:24px 28px; max-width:1100px; }
+        .content { padding:24px 28px; max-width:1400px; }
         .banner { padding:12px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; margin-bottom:16px; }
         .banner.ok { background:var(--green-soft); color:var(--green); }
         .banner.err { background:var(--red-soft); color:var(--red); }
         .intro { font-size:13px; color:var(--text2); margin-bottom:20px; line-height:1.6; }
         .intro strong { color:var(--text); }
-        .shift-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:16px; margin-bottom:20px; }
+        .shift-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin-bottom:20px; }
+        @media (max-width:1200px) { .shift-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+        @media (max-width:640px)  { .shift-grid { grid-template-columns:1fr; } }
         .shift-card { background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; }
         .shift-card-head { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
         .shift-card-head .bar { width:3px; height:16px; background:var(--red); border-radius:2px; }
@@ -115,6 +122,12 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         .field input { font-family:inherit; font-size:13px; padding:7px 9px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); outline:none; width:100px; }
         .field input:focus { border-color:var(--red); }
         .field .hint { font-size:9px; color:var(--text3); }
+        .field input[type=time] { width:124px; }
+        .field .out-efektif { font-family:inherit; font-size:14px; font-weight:700; color:var(--red); padding:7px 9px; border-radius:6px; border:1px solid var(--red-mid); background:var(--red-soft); width:100px; display:inline-block; }
+        .field .out-efektif.bad { color:var(--text3); background:var(--surface2); border-color:var(--border); }
+        .shift-breakdown { margin-top:10px; font-size:11px; color:var(--text2); font-family:'JetBrains Mono',monospace; background:var(--surface2); border:1px dashed var(--border); border-radius:6px; padding:7px 10px; line-height:1.5; }
+        .shift-breakdown .eq { color:var(--red); font-weight:700; }
+        .shift-breakdown.bad { color:var(--text3); }
         .actions { display:flex; gap:10px; align-items:center; }
         .btn { font-family:inherit; font-size:13px; font-weight:600; padding:10px 22px; border-radius:var(--radius-sm); border:none; cursor:pointer; text-decoration:none; }
         .btn-red { background:var(--red); color:#fff; } .btn-red:hover { background:var(--red-dark); }
@@ -138,9 +151,10 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         <?php endif; ?>
 
         <p class="intro">
-            Atur jam mulai, jam selesai, dan <strong>jam efektif</strong> (jam kerja bersih setelah dikurangi istirahat)
-            tiap shift. <strong>Jam efektif</strong> dipakai sebagai pembagi Operation Ratio.
-            Untuk shift malam, jam selesai boleh lebih kecil dari jam mulai (otomatis dianggap lewat tengah malam).
+            Atur jam mulai, jam selesai, dan <strong>lama istirahat (menit)</strong> tiap shift.
+            <strong>Jam efektif</strong> dihitung otomatis = (jam selesai − jam mulai) − istirahat, dan dipakai
+            sebagai pembagi Operation Ratio. Untuk shift malam, jam selesai boleh lebih kecil dari jam mulai
+            (otomatis dianggap lewat tengah malam).
         </p>
 
         <form action="shift_setting_action.php" method="POST">
@@ -156,18 +170,24 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                             <div class="field-line">
                                 <div class="field">
                                     <label>Jam Mulai</label>
-                                    <input type="time" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][mulai]" value="<?php echo $v['mulai']; ?>" required>
+                                    <input type="time" class="in-mulai" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][mulai]" value="<?php echo $v['mulai']; ?>" required>
                                 </div>
                                 <div class="field">
                                     <label>Jam Selesai</label>
-                                    <input type="time" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][selesai]" value="<?php echo $v['selesai']; ?>" required>
+                                    <input type="time" class="in-selesai" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][selesai]" value="<?php echo $v['selesai']; ?>" required>
+                                </div>
+                                <div class="field">
+                                    <label>Istirahat</label>
+                                    <input type="number" class="in-istirahat" step="1" min="0" max="1440" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][istirahat]" value="<?php echo $v['istirahat']; ?>" required>
+                                    <span class="hint">menit</span>
                                 </div>
                                 <div class="field">
                                     <label>Jam Efektif</label>
-                                    <input type="number" step="0.25" min="0.25" max="24" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][efektif_jam]" value="<?php echo $v['jam']; ?>" required>
-                                    <span class="hint">jam kerja bersih</span>
+                                    <output class="out-efektif">—</output>
+                                    <span class="hint">otomatis (jam kerja bersih)</span>
                                 </div>
                             </div>
+                            <div class="shift-breakdown">—</div>
                         </div>
                         <?php endfor; ?>
                     </div>
@@ -182,5 +202,61 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         </form>
     </div>
 </div>
+
+<script>
+(function () {
+    // Jam efektif = (jam_selesai - jam_mulai) - istirahat, dihitung otomatis.
+    // Kalau jam_selesai <= jam_mulai berarti shift lewat tengah malam (+1440).
+    function menit(t) {
+        if (!t) return null;
+        var p = t.split(':');
+        return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+    }
+    function fmtJam(m) {
+        var j = m / 60;
+        return (Math.round(j * 100) / 100).toString().replace(/\.00$/, '') + ' jam';
+    }
+    // menit → "8j 45m" (format jelas untuk rincian)
+    function fmtJM(m) {
+        return Math.floor(m / 60) + 'j ' + (m % 60) + 'm';
+    }
+    function hitung(row) {
+        var vMulai   = row.querySelector('.in-mulai').value;
+        var vSelesai = row.querySelector('.in-selesai').value;
+        var mulai    = menit(vMulai);
+        var selesai  = menit(vSelesai);
+        var ist      = parseInt(row.querySelector('.in-istirahat').value, 10);
+        var out      = row.querySelector('.out-efektif');
+        var bd       = row.querySelector('.shift-breakdown');
+        if (mulai === null || selesai === null || isNaN(ist)) {
+            out.textContent = '—'; out.classList.add('bad');
+            if (bd) { bd.textContent = '—'; bd.classList.add('bad'); }
+            return;
+        }
+        var span = selesai - mulai;
+        if (span <= 0) span += 1440;
+        var efektif = span - ist;
+        if (efektif <= 0) {
+            out.textContent = 'invalid'; out.classList.add('bad');
+            if (bd) { bd.textContent = 'Istirahat melebihi durasi shift'; bd.classList.add('bad'); }
+            return;
+        }
+        out.textContent = fmtJam(efektif); out.classList.remove('bad');
+        if (bd) {
+            bd.classList.remove('bad');
+            // Rincian dengan jam format 24-jam yang tidak ambigu.
+            bd.innerHTML = vMulai + ' → ' + vSelesai + ' · durasi ' + fmtJM(span)
+                + ' − istirahat ' + ist + 'm '
+                + '<span class="eq">= ' + fmtJM(efektif) + ' efektif</span>';
+        }
+    }
+    document.querySelectorAll('.shift-row').forEach(function (row) {
+        row.querySelectorAll('.in-mulai, .in-selesai, .in-istirahat').forEach(function (el) {
+            el.addEventListener('input', function () { hitung(row); });
+        });
+        hitung(row);
+    });
+})();
+</script>
 </body>
 </html>

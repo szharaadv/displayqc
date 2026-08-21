@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 include '../config/koneksi.php';
 include '../config/shift.php';
+include '../config/ratio_ui.php';
 /** @var mysqli $conn */
 
 mysqli_query($conn, "SET time_zone = '+07:00'");
@@ -32,6 +33,15 @@ $lihat_hari_ini = ($date_from === $hari_ini_kerja);
 $shift_hari_ini = qcShiftPadaHari(strtotime($date_from));
 $window_mulai   = date('Y-m-d H:i:s', $shift_hari_ini[0]['mulai_ts']);
 $window_selesai = date('Y-m-d H:i:s', $shift_hari_ini[count($shift_hari_ini) - 1]['selesai_ts']);
+
+// KHUSUS Operation Ratio: window dimulai lebih awal, dari shift 3 hari SEBELUMNYA
+// (yang berjalan semalam sampai pagi ini), supaya shift 3 lintas-tengah-malam
+// tetap tampil sebagai kartu "Lanjutan" di hari ini. Ini TIDAK dipakai untuk
+// statistik lain (step/order/mesin) — hanya untuk query ratio. Grup shift 3
+// semalam otomatis punya shift_date = kemarin (dari qcShift), jadi tetap
+// terhitung sekali di tanggalnya sendiri, tidak double.
+$shift_kemarin        = qcShiftPadaHari(strtotime('-1 day', strtotime($date_from)));
+$window_ratio_mulai   = date('Y-m-d H:i:s', $shift_kemarin[count($shift_kemarin) - 1]['mulai_ts']);
 
 $selected_nik = isset($_GET['nik']) ? $_GET['nik'] : 'all';
 
@@ -101,7 +111,7 @@ if ($selected_nik !== 'all') {
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
         WHERE u.nik = '$nik_esc3'
-          AND sps.start_time >= '$window_mulai'
+          AND sps.start_time >= '$window_ratio_mulai'
           AND sps.start_time <  '$window_selesai'
           AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
@@ -117,6 +127,8 @@ if ($selected_nik !== 'all') {
                 'tgl'         => $shift['shift_date'],
                 'shift_nama'  => $shift['nama'],
                 'work_sec'    => $shift['detik'],
+                'mulai_ts'    => $shift['mulai_ts'],
+                'selesai_ts'  => $shift['selesai_ts'],
                 'total_detik' => 0,
             ];
         }
@@ -129,6 +141,9 @@ if ($selected_nik !== 'all') {
             'tgl'         => $g['tgl'],
             'shift_nama'  => $g['shift_nama'],
             'total_detik' => $g['total_detik'],
+            'work_sec'    => $g['work_sec'],
+            'mulai_ts'    => $g['mulai_ts'],
+            'selesai_ts'  => $g['selesai_ts'],
             'ratio'       => $ratio,
         ];
     }
@@ -141,7 +156,7 @@ if ($selected_nik !== 'all') {
             TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi
         FROM sampling_process_steps sps
         JOIN users u ON sps.qc_user_id = u.id
-        WHERE sps.start_time >= '$window_mulai'
+        WHERE sps.start_time >= '$window_ratio_mulai'
           AND sps.start_time <  '$window_selesai'
           AND sps.status IN ('done', 'paused')
           AND sps.end_time IS NOT NULL
@@ -163,6 +178,8 @@ if ($selected_nik !== 'all') {
                 'tgl'         => $shift['shift_date'],
                 'shift_nama'  => $shift['nama'],
                 'work_sec'    => $shift['detik'],
+                'mulai_ts'    => $shift['mulai_ts'],
+                'selesai_ts'  => $shift['selesai_ts'],
                 'total_detik' => 0,
             ];
         }
@@ -207,7 +224,7 @@ $detailQ = mysqli_query($conn, "
     LEFT JOIN master_parts mp    ON so.part_id      = mp.id
     LEFT JOIN master_lines ml    ON so.line_id      = ml.id
     LEFT JOIN master_machines mm ON so.machine_id   = mm.id
-    WHERE sps.start_time >= '$window_mulai'
+    WHERE sps.start_time >= '$window_ratio_mulai'
       AND sps.start_time <  '$window_selesai'
       AND sps.status IN ('done', 'paused')
       AND sps.end_time IS NOT NULL
@@ -483,6 +500,14 @@ $active_staff = count($staff_aktif);
                     <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
                 </span>
             </div>
+            <?php echo qcRatioUiStyle(); ?>
+            <style>
+            /* Penanda shift 3 lintas-tengah-malam yang "menyambung" dari hari sebelumnya. */
+            .ratio-lanjut-badge { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; color:#2563eb; background:#fff; border:1px solid #c7dcff; border-radius:20px; padding:3px 8px; margin-left:8px; vertical-align:middle; white-space:nowrap; }
+            .ratio-lanjut-src { font-size:10px; color:#2563eb; font-family:'JetBrains Mono',monospace; margin-top:3px; }
+            tr.row-lanjut td { background:#eff5ff; }
+            .day-lanjut-tag { font-size:9px; font-weight:700; color:#2563eb; border:1px solid #c7dcff; background:#e6efff; border-radius:5px; padding:1px 5px; margin-left:4px; white-space:nowrap; }
+            </style>
 
             <?php
             function ratioClass(float $r): string {
@@ -515,16 +540,22 @@ $active_staff = count($staff_aktif);
                                 $cls = ratioClass($rd['ratio']);
                                 $jam = floor($rd['total_detik'] / 3600);
                                 $mnt = floor(($rd['total_detik'] % 3600) / 60);
+                                $is_lanjut = ($rd['tgl'] !== $date_from);
                             ?>
-                            <tr>
+                            <tr class="<?php echo $is_lanjut ? 'row-lanjut' : ''; ?>">
                                 <td class="mono"><?php echo $rd['tgl']; ?></td>
-                                <td><span style="font-size:11px;font-weight:600;color:var(--text2);"><?php echo $rd['shift_nama']; ?></span></td>
+                                <td>
+                                    <span style="font-size:11px;font-weight:600;color:var(--text2);"><?php echo $rd['shift_nama']; ?></span>
+                                    <?php if ($is_lanjut): ?><span class="ratio-lanjut-badge">⏱ Lanjutan</span><div class="ratio-lanjut-src">dari <?php echo date('d M', strtotime($rd['tgl'])); ?> · <?php echo date('H:i', (int)$rd['mulai_ts']); ?>–<?php echo date('H:i', (int)$rd['selesai_ts']); ?></div><?php endif; ?>
+                                </td>
                                 <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
                                         <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
                                         <span class="ratio-val <?php echo $cls; ?>"><?php echo $rd['ratio']; ?>%</span>
+                                        <?php echo qcRatioHelp((int)$rd['mulai_ts'], (int)$rd['selesai_ts'], (int)$rd['work_sec']); ?>
                                     </div>
+                                    <?php echo qcRatioFraction((int)$rd['total_detik'], (int)$rd['work_sec']); ?>
                                 </td>
                                 <td><span class="ratio-badge <?php echo $cls; ?>"><?php echo ratioLabel($rd['ratio']); ?></span></td>
                             </tr>
@@ -560,15 +591,20 @@ $active_staff = count($staff_aktif);
                         </div>
                         <?php foreach ($rs['days'] as $d):
                             $dcls = ratioClass($d['ratio']);
-                            $djam = floor($d['total_detik'] / 3600);
-                            $dmnt = floor(($d['total_detik'] % 3600) / 60);
+                            $d_efektif   = (int)($d['work_sec'] ?? 0);
+                            $d_dur_menit = (int)round((($d['selesai_ts'] ?? 0) - ($d['mulai_ts'] ?? 0)) / 60);
+                            $d_ist       = max(0, $d_dur_menit - (int)round($d_efektif / 60));
+                            $d_title     = date('H:i', (int)($d['mulai_ts'] ?? 0)) . '–' . date('H:i', (int)($d['selesai_ts'] ?? 0))
+                                         . ' · durasi ' . qcFmtDurasiMenit($d_dur_menit)
+                                         . ' − istirahat ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' efektif';
+                            $d_lanjut    = ($d['tgl'] !== $date_from);
                         ?>
-                        <div class="ratio-day-row">
+                        <div class="ratio-day-row"<?php echo $d_lanjut ? ' style="background:#eff5ff;border-radius:6px;"' : ''; ?>>
                             <span style="font-size:10px;color:var(--text2);font-family:'JetBrains Mono',monospace;min-width:80px;"><?php echo $d['tgl']; ?></span>
-                            <span style="font-size:10px;color:var(--text3);min-width:44px;"><?php echo $d['shift_nama']; ?></span>
+                            <span style="font-size:10px;color:var(--text3);min-width:44px;"><?php echo $d['shift_nama']; ?><?php if ($d_lanjut): ?><span class="day-lanjut-tag">Lanjutan</span><?php endif; ?></span>
                             <div class="ratio-bar-bg" style="flex:1;height:8px;"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
                             <span class="ratio-val <?php echo $dcls; ?>" style="min-width:42px;"><?php echo $d['ratio']; ?>%</span>
-                            <span style="font-size:10px;color:var(--text3);min-width:44px;text-align:right;"><?php echo "{$djam}j{$dmnt}m"; ?></span>
+                            <span style="font-size:10px;color:var(--text3);min-width:78px;text-align:right;font-family:'JetBrains Mono',monospace;" title="<?php echo htmlspecialchars($d_title); ?>"><?php echo qcFmtDurasiDetik((int)$d['total_detik']); ?> <span style="color:var(--text3);opacity:.6;">⁄</span> <?php echo qcFmtDurasiDetik($d_efektif); ?></span>
                         </div>
                         <?php endforeach; ?>
 

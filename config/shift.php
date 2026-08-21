@@ -12,8 +12,8 @@ date_default_timezone_set('Asia/Jakarta');
 
 /**
  * Nilai default (fallback) — dipakai kalau tabel master_shifts belum ada atau
- * belum lengkap, supaya sistem tetap jalan. Kunci: weekday (Senin-Kamis & Minggu),
- * friday, saturday. Format tiap shift sama seperti keluaran qcBatasShift().
+ * belum lengkap, supaya sistem tetap jalan. Kunci: weekday (Senin-Kamis),
+ * friday, saturday, sunday (Minggu). Format tiap shift seperti qcBatasShift().
  */
 function qcShiftDefault(): array {
     return [
@@ -32,6 +32,11 @@ function qcShiftDefault(): array {
             ['nama' => 'Shift 2', 'mulai' => 855,  'selesai' => 1305, 'detik' => 27000],
             ['nama' => 'Shift 3', 'mulai' => 1305, 'selesai' => 1755, 'detik' => 27000],
         ],
+        'sunday' => [
+            ['nama' => 'Shift 1', 'mulai' => 390,  'selesai' => 915,  'detik' => 28800],
+            ['nama' => 'Shift 2', 'mulai' => 915,  'selesai' => 1380, 'detik' => 27000],
+            ['nama' => 'Shift 3', 'mulai' => 1380, 'selesai' => 1830, 'detik' => 24300],
+        ],
     ];
 }
 
@@ -43,8 +48,8 @@ function qcJamKeMenit(string $jam): int {
 
 /**
  * Muat definisi shift dari tabel master_shifts (via $conn global), sekali per
- * request. Kalau tabel tidak ada, gagal, atau tidak lengkap (butuh 9 baris:
- * 3 tipe hari × 3 shift), pakai qcShiftDefault() supaya tidak pernah error.
+ * request. Kalau tabel tidak ada, gagal, atau tidak lengkap (butuh 12 baris:
+ * 4 tipe hari × 3 shift), pakai qcShiftDefault() supaya tidak pernah error.
  */
 function qcMuatShift(): array {
     static $cache = null;
@@ -62,7 +67,7 @@ function qcMuatShift(): array {
         } catch (\Throwable $e) {
             $res = false;
         }
-        if ($res && mysqli_num_rows($res) === 9) {
+        if ($res && mysqli_num_rows($res) === 12) {
             $tmp = [];
             while ($r = mysqli_fetch_assoc($res)) {
                 $mulai   = qcJamKeMenit($r['jam_mulai']);
@@ -77,7 +82,7 @@ function qcMuatShift(): array {
             }
             // Pastikan ketiga tipe hari & ketiga shift lengkap sebelum dipakai
             $lengkap = true;
-            foreach (['weekday', 'friday', 'saturday'] as $t) {
+            foreach (['weekday', 'friday', 'saturday', 'sunday'] as $t) {
                 for ($n = 1; $n <= 3; $n++) {
                     if (!isset($tmp[$t][$n])) { $lengkap = false; break 2; }
                 }
@@ -104,7 +109,8 @@ function qcBatasShift(int $hari): array {
     $cfg = qcMuatShift();
     if ($hari === 5) return $cfg['friday'];
     if ($hari === 6) return $cfg['saturday'];
-    return $cfg['weekday']; // Senin–Kamis & Minggu
+    if ($hari === 7) return $cfg['sunday'];
+    return $cfg['weekday']; // Senin–Kamis
 }
 
 /** Ketiga shift milik satu hari, sudah jadi timestamp absolut. */
