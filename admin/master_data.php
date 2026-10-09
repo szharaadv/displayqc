@@ -167,7 +167,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                 <div class="filter-group">
                     <label class="filter-label">Category</label>
                     <select name="kat" class="filter-input" onchange="this.form.submit()">
-                        <option value="all" <?php echo $filter_kat === 'all' ? 'selected' : ''; ?>>Semua Category</option>
+                        <option value="all" <?php echo $filter_kat === 'all' ? 'selected' : ''; ?>>All Categories</option>
                         <?php foreach ($KATEGORI as $k): ?>
                             <option value="<?php echo $k; ?>" <?php echo $filter_kat === $k ? 'selected' : ''; ?>><?php echo $k; ?></option>
                         <?php endforeach; ?>
@@ -175,12 +175,12 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                 </div>
             </form>
             <div class="filter-group">
-                <label class="filter-label">Cari</label>
+                <label class="filter-label">Search</label>
                 <input type="text" id="cari" class="filter-input" style="min-width:260px;"
-                       placeholder="Ketik untuk menyaring…" autocomplete="off">
+                       placeholder="Type to filter…" autocomplete="off">
             </div>
             <div class="spacer"></div>
-            <button type="button" class="btn btn-red" onclick="bukaTambah()">+ Tambah <?php echo $cfg['label']; ?></button>
+            <button type="button" class="btn btn-red" onclick="bukaTambah()">+ Add <?php echo $cfg['label']; ?></button>
         </div>
 
         <p id="cariInfo" style="font-size:12px;color:var(--text2);margin-bottom:12px;display:none;"></p>
@@ -193,13 +193,13 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                         <?php foreach ($cfg['kolom'] as $label): ?>
                             <th><?php echo htmlspecialchars($label); ?></th>
                         <?php endforeach; ?>
-                        <th style="width:90px;">Dipakai</th>
-                        <th style="width:150px;text-align:right;">Aksi</th>
+                        <th style="width:90px;">Used</th>
+                        <th style="width:150px;text-align:right;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($rows)): ?>
-                        <tr><td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty"><?php echo ($cari !== '' || $filter_kat !== 'all') ? 'Tidak ada data yang cocok dengan pencarian/filter.' : 'Belum ada data.'; ?></td></tr>
+                        <tr><td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty"><?php echo ($cari !== '' || $filter_kat !== 'all') ? 'No data matches the search/filter.' : 'No data yet.'; ?></td></tr>
                     <?php else: foreach ($rows as $r):
                         // Data untuk dibawa ke modal edit
                         $edit = ['id' => $r['id'], 'category' => $r['category']];
@@ -220,18 +220,18 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                                         onclick='bukaEdit(<?php echo json_encode($edit, JSON_HEX_APOS | JSON_HEX_QUOT); ?>)'>Edit</button>
                                     <?php if ((int)$r['dipakai'] > 0): ?>
                                         <button type="button" class="btn btn-ghost btn-mini" style="opacity:.5;cursor:not-allowed;"
-                                            title="Sudah dipakai <?php echo (int)$r['dipakai']; ?> order, tidak bisa dihapus" disabled>Hapus</button>
+                                            title="Used in <?php echo (int)$r['dipakai']; ?> orders, cannot be deleted" disabled>Delete</button>
                                     <?php else: ?>
                                         <a class="btn btn-mini" style="background:var(--red);color:#fff;"
                                            href="master_data_action.php?aksi=hapus&tab=<?php echo $tab; ?>&id=<?php echo $r['id']; ?>"
-                                           onclick="return confirm('Yakin hapus data master ini?');">Hapus</a>
+                                           onclick="return confirm('Delete this master data?');">Delete</a>
                                     <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
                     <tr id="barisKosongCari" style="display:none;">
-                        <td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty">Tidak ada data yang cocok dengan pencarian.</td>
+                        <td colspan="<?php echo count($cfg['kolom']) + 3; ?>" class="empty">No data matches the search.</td>
                     </tr>
                 </tbody>
             </table>
@@ -242,7 +242,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 <!-- Modal Tambah / Edit -->
 <div id="modal" class="modal-overlay">
     <div class="modal-box">
-        <h3 id="modalJudul">Tambah <?php echo $cfg['label']; ?></h3>
+        <h3 id="modalJudul">Add <?php echo $cfg['label']; ?></h3>
         <form action="master_data_action.php" method="POST">
             <input type="hidden" name="aksi" value="simpan">
             <input type="hidden" name="tab" value="<?php echo $tab; ?>">
@@ -250,7 +250,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 
             <label>Category</label>
             <select name="category" id="f_category" required>
-                <option value="">-- Pilih Category --</option>
+                <option value="">-- Select Category --</option>
                 <?php foreach ($KATEGORI as $k): ?>
                     <option value="<?php echo $k; ?>"><?php echo $k; ?></option>
                 <?php endforeach; ?>
@@ -262,8 +262,8 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
             <?php endforeach; ?>
 
             <div class="modal-actions">
-                <button type="button" class="btn btn-ghost" onclick="tutupModal()">Batal</button>
-                <button type="submit" class="btn btn-red">Simpan</button>
+                <button type="button" class="btn btn-ghost" onclick="tutupModal()">Cancel</button>
+                <button type="submit" class="btn btn-red">Save</button>
             </div>
         </form>
     </div>
@@ -275,7 +275,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
     const labelTab = <?php echo json_encode($cfg['label']); ?>;
 
     function bukaTambah() {
-        document.getElementById('modalJudul').textContent = 'Tambah ' + labelTab;
+        document.getElementById('modalJudul').textContent = 'Add ' + labelTab;
         document.getElementById('f_id').value = '0';
         document.getElementById('f_category').value = '';
         kolom.forEach(c => document.getElementById('f_' + c).value = '');
@@ -316,8 +316,8 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
             infoCari.style.display = 'none';
         } else {
             infoCari.style.display = '';
-            infoCari.innerHTML = 'Hasil untuk "<strong>' + inputCari.value.replace(/</g,'&lt;') +
-                                 '</strong>" — ' + cocok + ' data ditemukan.';
+            infoCari.innerHTML = 'Results for "<strong>' + inputCari.value.replace(/</g,'&lt;') +
+                                 '</strong>" — ' + cocok + ' found.';
         }
     }
 

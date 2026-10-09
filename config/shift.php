@@ -163,11 +163,11 @@ function qcShift($waktu = 'now'): array {
     return $sudah_lewat ? end($sudah_lewat) : $kandidat[0];
 }
 
-/** Label shift aktif untuk ditampilkan, mis. "Shift 3 (23:00-06:30) | Efektif 6,75 jam". */
+/** Label shift aktif untuk ditampilkan, mis. "Shift 3 (23:00-06:30) | Effective 6.75 h". */
 function qcLabelShift(array $shift): string {
-    $jam = rtrim(rtrim(number_format($shift['detik'] / 3600, 2, ',', ''), '0'), ',');
+    $jam = rtrim(rtrim(number_format($shift['detik'] / 3600, 2, '.', ''), '0'), '.');
     return sprintf(
-        '%s (%s-%s) | Efektif %s jam',
+        '%s (%s-%s) | Effective %s h',
         $shift['nama'],
         date('H:i', $shift['mulai_ts']),
         date('H:i', $shift['selesai_ts']),

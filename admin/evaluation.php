@@ -190,39 +190,12 @@ $cycleQuery = mysqli_query($conn, "
 $cycle_rows = [];
 while ($row = mysqli_fetch_assoc($cycleQuery)) $cycle_rows[] = $row;
 
-// ── Detail Step List ─────────────────────────────────────────────────────────
-$detailQuery = mysqli_query($conn, "
-    SELECT
-        sps.id,
-        DATE(sps.start_time) AS tgl,
-        u.nama AS qc_nama,
-        u.nik  AS qc_nik,
-        so.order_code,
-        mp.part_name,
-        mp.part_no,
-        sps.qc_machine,
-        sps.start_time,
-        sps.end_time,
-        TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi_detik
-    FROM sampling_process_steps sps
-    JOIN users u ON sps.qc_user_id = u.id
-    JOIN sampling_orders so ON sps.order_id = so.id
-    JOIN master_parts mp ON so.part_id = mp.id
-    WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
-      AND sps.status = 'done'
-      AND sps.end_time IS NOT NULL
-      $whereNik
-    ORDER BY sps.start_time DESC
-");
-$detail_rows = [];
-while ($row = mysqli_fetch_assoc($detailQuery)) $detail_rows[] = $row;
-
 $total_step_all  = array_sum(array_column($summary_data, 'total_step'));
 $total_order_all = array_sum(array_column($summary_data, 'total_order'));
 $active_staff    = count(array_filter($summary_data, fn($s) => $s['total_step'] > 0));
 $top_staff       = !empty($summary_data) ? $summary_data[0]['nama'] : '-';
 
-$month_names = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+$month_names = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 $period_label = $month_names[$sel_month] . ' ' . $sel_year;
 
 function ratioClass(float $r): string {
@@ -231,16 +204,16 @@ function ratioClass(float $r): string {
     return 'low';
 }
 function ratioLabel(float $r): string {
-    if ($r >= 80) return '🟢 Produktif';
+    if ($r >= 80) return '🟢 Productive';
     if ($r >= 50) return '🟡 Normal';
-    return '🔴 Perhatian';
+    return '🔴 Needs Attention';
 }
 
 function fmtTime(int $sec): string {
     $h = floor($sec / 3600);
     $m = floor(($sec % 3600) / 60);
     $s = $sec % 60;
-    if ($h > 0) return "{$h}j {$m}m {$s}s";
+    if ($h > 0) return "{$h}h {$m}m {$s}s";
     if ($m > 0) return "{$m}m {$s}s";
     return "{$s}s";
 }
@@ -252,6 +225,7 @@ function fmtTime(int $sec): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Evaluation — QC Yanmar</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/components.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -336,7 +310,7 @@ function fmtTime(int $sec): string {
         .summary-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
         .summary-card.accent .summary-sub { color: rgba(255,255,255,0.6); }
 
-        .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .section-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
         .section-head-line { width: 3px; height: 16px; background: var(--red); border-radius: 2px; }
         .section-head-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
 
@@ -402,39 +376,42 @@ function fmtTime(int $sec): string {
     <div class="content">
 
         <!-- Filter -->
-        <form method="GET" class="filter-card">
-            <div class="filter-group">
-                <label class="filter-label">Bulan</label>
-                <select name="month" class="filter-input">
-                    <?php foreach ($month_names as $num => $name):
-                        if ($num === 0) continue; ?>
-                    <option value="<?php echo $num; ?>" <?php echo $sel_month === $num ? 'selected' : ''; ?>><?php echo $name; ?></option>
-                    <?php endforeach; ?>
-                </select>
+        <?php
+            $blnTs   = mktime(0, 0, 0, $sel_month, 1, $sel_year);
+            $blnPrev = strtotime('-1 month', $blnTs);
+            $blnNext = strtotime('+1 month', $blnTs);
+            $nikQ    = '&nik=' . urlencode($sel_nik);
+            $ini     = ($sel_month === (int)date('n') && $sel_year === (int)date('Y'));
+            $bisaMaju = $blnNext <= mktime(0, 0, 0, (int)date('n'), 1, (int)date('Y'));
+        ?>
+        <form method="GET" class="filterbar">
+            <input type="hidden" name="month" value="<?php echo $sel_month; ?>">
+            <input type="hidden" name="year" value="<?php echo $sel_year; ?>">
+            <div class="datenav">
+                <a class="nav-btn" href="?month=<?php echo date('n', $blnPrev); ?>&year=<?php echo date('Y', $blnPrev) . $nikQ; ?>" title="Previous month" aria-label="Previous month">‹</a>
+                <label class="fctl" data-picker>
+                    <span class="fctl-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                    <span class="fctl-txt"><small>Month</small><strong><?php echo $period_label; ?></strong></span>
+                    <input class="fctl-native" type="month" value="<?php echo date('Y-m', $blnTs); ?>" max="<?php echo date('Y-m'); ?>" tabindex="-1"
+                           onchange="var p = this.value.split('-'); if (p.length === 2) { this.form.month.value = +p[1]; this.form.year.value = p[0]; this.form.submit(); }">
+                </label>
+                <a class="nav-btn <?php echo $bisaMaju ? '' : 'off'; ?>" href="?month=<?php echo date('n', $blnNext); ?>&year=<?php echo date('Y', $blnNext) . $nikQ; ?>" title="Next month" aria-label="Next month">›</a>
             </div>
-            <div class="filter-group">
-                <label class="filter-label">Tahun</label>
-                <select name="year" class="filter-input">
-                    <?php for ($y = (int)date('Y'); $y >= 2024; $y--): ?>
-                    <option value="<?php echo $y; ?>" <?php echo $sel_year === $y ? 'selected' : ''; ?>><?php echo $y; ?></option>
-                    <?php endfor; ?>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label class="filter-label">Staff QC</label>
-                <select name="nik" class="filter-input">
-                    <option value="all" <?php echo $sel_nik === 'all' ? 'selected' : ''; ?>>Semua Staff</option>
-                    <?php foreach ($staffList as $s): ?>
-                    <option value="<?php echo $s['nik']; ?>" <?php echo $sel_nik === $s['nik'] ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($s['nama']); ?> (<?php echo $s['nik']; ?>)
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <button type="submit" class="btn-filter">Tampilkan</button>
-            <a class="btn-filter" style="background:var(--green);text-decoration:none;display:inline-flex;align-items:center;"
-               href="export_evaluation.php?month=<?php echo $sel_month; ?>&year=<?php echo $sel_year; ?>&nik=<?php echo urlencode($sel_nik); ?>">
-                ⬇ Export Excel (.xlsx)
+            <a class="chip-now <?php echo $ini ? 'on' : ''; ?>" href="evaluation.php?nik=<?php echo urlencode($sel_nik); ?>">This month</a>
+            <label class="fctl">
+                <span class="fctl-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span>
+                <span class="fctl-txt"><small>QC Staff</small>
+                    <select name="nik" onchange="this.form.submit()">
+                        <option value="all" <?php echo $sel_nik === 'all' ? 'selected' : ''; ?>>All Staff</option>
+                        <?php foreach ($staffList as $s): ?>
+                        <option value="<?php echo $s['nik']; ?>" <?php echo $sel_nik === $s['nik'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($s['nama']); ?> (<?php echo $s['nik']; ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </span>
+            </label>
+            <a class="btn-export push" href="export_evaluation.php?month=<?php echo $sel_month; ?>&year=<?php echo $sel_year; ?>&nik=<?php echo urlencode($sel_nik); ?>">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export Excel (.xlsx)
             </a>
         </form>
 
@@ -452,21 +429,21 @@ function fmtTime(int $sec): string {
                 <div class="summary-icon icon-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
                 <div class="summary-label">Total Order</div>
                 <div class="summary-value"><?php echo $total_order_all; ?></div>
-                <div class="summary-sub">Selesai</div>
+                <div class="summary-sub">Completed</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
                 <div class="summary-icon icon-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg></div>
-                <div class="summary-label">Staff Aktif</div>
+                <div class="summary-label">Active Staff</div>
                 <div class="summary-value"><?php echo $active_staff; ?></div>
-                <div class="summary-sub">dari <?php echo count($summary_data); ?> staff</div>
+                <div class="summary-sub">of <?php echo count($summary_data); ?> staff</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
                 <div class="summary-icon icon-gray"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div>
                 <div class="summary-label">Top Performer</div>
                 <div class="summary-value" style="font-size:16px;padding-top:6px;line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
-                <div class="summary-sub">Step terbanyak</div>
+                <div class="summary-sub">Most steps</div>
             </div>
         </div>
 
@@ -475,25 +452,25 @@ function fmtTime(int $sec): string {
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;">
-                    <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
-                    <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
-                    <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
-                </span>
+                <div class="ratio-legend">
+                    <span class="lg lg-high"><i></i>≥80% Productive</span>
+                    <span class="lg lg-mid"><i></i>50–79% Normal</span>
+                    <span class="lg lg-low"><i></i>&lt;50% Needs Attention</span>
+                </div>
             </div>
             <?php echo qcRatioUiStyle(); ?>
 
             <?php if ($sel_nik !== 'all'): ?>
                 <?php if (empty($ratio_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;margin-bottom:22px;">Belum ada data operation ratio pada periode ini.</p>
+                    <p style="color:var(--text3);font-size:13px;margin-bottom:22px;">No operation ratio data for this period.</p>
                 <?php else: ?>
                 <div class="table-card">
                     <div class="table-head-bar">
                         <div class="section-head-line"></div>
-                        <div class="section-head-title" style="margin:0;"><?php echo htmlspecialchars($summary_data[0]['nama'] ?? ''); ?> — Ratio per Hari</div>
+                        <div class="section-head-title" style="margin:0;"><?php echo htmlspecialchars($summary_data[0]['nama'] ?? ''); ?> — Ratio per Day</div>
                     </div>
                     <table class="dash-table">
-                        <thead><tr><th>Tanggal</th><th>Waktu Aktif</th><th style="min-width:210px;">Operation Ratio <span style="font-weight:400;text-transform:none;color:var(--text3);">(aktif ⁄ efektif)</span></th><th>Status</th></tr></thead>
+                        <thead><tr><th>Date</th><th>Active Time</th><th style="min-width:210px;">Operation Ratio <span style="font-weight:400;text-transform:none;color:var(--text3);">(active ⁄ effective)</span></th><th>Status</th></tr></thead>
                         <tbody>
                             <?php foreach ($ratio_data as $rd):
                                 $cls = ratioClass($rd['ratio']);
@@ -502,7 +479,7 @@ function fmtTime(int $sec): string {
                             ?>
                             <tr>
                                 <td class="mono"><?php echo $rd['tgl']; ?></td>
-                                <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
+                                <td class="mono"><?php echo "{$jam}h {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
                                         <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
@@ -520,7 +497,7 @@ function fmtTime(int $sec): string {
                 <?php endif; ?>
             <?php else: ?>
                 <?php if (empty($ratio_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;margin-bottom:22px;">Belum ada data operation ratio pada periode ini.</p>
+                    <p style="color:var(--text3);font-size:13px;margin-bottom:22px;">No operation ratio data for this period.</p>
                 <?php else: ?>
                 <div class="ratio-grid-all" style="margin-bottom:22px;">
                     <?php foreach ($ratio_data as $rs):
@@ -563,8 +540,8 @@ function fmtTime(int $sec): string {
                     $d_dur_menit = (int)round((($d['selesai_ts'] ?? 0) - ($d['mulai_ts'] ?? 0)) / 60);
                     $d_ist       = max(0, $d_dur_menit - (int)round($d_efektif / 60));
                     $d_title     = date('H:i', (int)($d['mulai_ts'] ?? 0)) . '–' . date('H:i', (int)($d['selesai_ts'] ?? 0))
-                                 . ' · durasi ' . qcFmtDurasiMenit($d_dur_menit)
-                                 . ' − istirahat ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' efektif';
+                                 . ' · duration ' . qcFmtDurasiMenit($d_dur_menit)
+                                 . ' − break ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' effective';
                 ?>
                 <div class="ratio-day-row">
                     <span class="ratio-day-label"><?php echo $d['tgl']; ?></span>
@@ -588,18 +565,19 @@ function fmtTime(int $sec): string {
         </div>
 
         <!-- Summary per Staff -->
-        <div class="table-card" style="max-height: 350px; overflow-y: auto;">
-            <div class="table-head-bar" style="position: sticky; top: 0; z-index: 10; background: var(--surface);">
+        <div class="table-card">
+            <div class="table-head-bar">
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div class="section-head-line"></div>
                     <div class="section-head-title" style="margin:0;">Summary per Staff</div>
                 </div>
                 <span style="font-size:11px;color:var(--text3);"><?php echo $period_label; ?></span>
             </div>
+            <div style="max-height: 300px; overflow-y: auto;">
             <table class="dash-table">
-                <thead style="position: sticky; top: 57px; z-index: 9;">
+                <thead style="position: sticky; top: 0; z-index: 9;">
                     <tr>
-                        <th>Nama</th><th>NIK</th><th>Order</th><th>Step</th>
+                        <th>Name</th><th>NIK</th><th>Order</th><th>Step</th>
                         <th>CMM</th><th>RONDCOM</th><th>ROUGHNESS</th><th>CONTOUR</th>
                         <th>PROFIL</th><th>MANUAL</th><th>HARDNESS</th>
                     </tr>
@@ -622,6 +600,7 @@ function fmtTime(int $sec): string {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- Cycle Time per Order -->
@@ -629,25 +608,25 @@ function fmtTime(int $sec): string {
             <div class="section-head">
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Cycle Time per Order</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($cycle_rows); ?> order selesai</span>
+                <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($cycle_rows); ?> orders completed</span>
             </div>
             <div class="table-card" style="max-height: 400px; overflow-y: auto;">
                 <?php if (empty($cycle_rows)): ?>
-                    <div class="detail-empty">Belum ada data cycle time pada periode ini.</div>
+                    <div class="detail-empty">No cycle time data for this period.</div>
                 <?php else: ?>
                 <table class="dash-table">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr>
                             <th>#</th>
-                            <th>Tanggal</th>
+                            <th>Date</th>
                             <th>Staff</th>
                             <th>Order Code</th>
                             <th>Part Name</th>
-                            <th>Mulai</th>
-                            <th>Selesai</th>
+                            <th>Start</th>
+                            <th>Finish</th>
                             <th>Cycle Time</th>
-                            <th>Waktu Aktif</th>
-                            <th>Efisiensi</th>
+                            <th>Active Time</th>
+                            <th>Efficiency</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -687,64 +666,6 @@ function fmtTime(int $sec): string {
             </div>
         </div>
 
-        <!-- Detail Step List -->
-        <div class="detail-section">
-            <div class="section-head">
-                <div class="section-head-line"></div>
-                <div class="section-head-title">Detail Step</div>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($detail_rows); ?> records</span>
-            </div>
-            <div class="table-card" style="max-height: calc(100vh - 200px); overflow-y: auto;">
-                <?php if (empty($detail_rows)): ?>
-                    <div class="detail-empty">Belum ada data step pada periode ini.</div>
-                <?php else: ?>
-                <table class="dash-table">
-                    <thead style="position: sticky; top: 0; z-index: 10;">
-                        <tr>
-                            <th>#</th><th>Tanggal</th><th>Staff</th><th>Order Code</th>
-                            <th>Part Name</th><th>Part No</th><th>Mesin QC</th>
-                            <th>Start</th><th>End</th><th>Durasi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($detail_rows as $i => $d):
-                            $dur   = (int)$d['durasi_detik'];
-                            $dur_m = floor($dur / 60);
-                            $dur_s = $dur % 60;
-                            $mesin_key = strtolower(str_replace([' ', '/'], '', $d['qc_machine']));
-                            if (str_contains($mesin_key, 'cmm'))       $mk = 'cmm';
-                            elseif (str_contains($mesin_key, 'rond'))  $mk = 'rondcom';
-                            elseif (str_contains($mesin_key, 'rough')) $mk = 'roughness';
-                            elseif (str_contains($mesin_key, 'cont'))  $mk = 'contour';
-                            elseif (str_contains($mesin_key, 'prof'))  $mk = 'profil';
-                            elseif (str_contains($mesin_key, 'man'))   $mk = 'manual';
-                            elseif (str_contains($mesin_key, 'hard'))  $mk = 'hardness';
-                            else $mk = 'manual';
-                        ?>
-                        <tr>
-                            <td class="mono" style="color:var(--text3);"><?php echo $i + 1; ?></td>
-                            <td class="mono"><?php echo $d['tgl']; ?></td>
-                            <td>
-                                <strong><?php echo htmlspecialchars($d['qc_nama']); ?></strong>
-                                <div style="font-size:10px;color:var(--text3);"><?php echo $d['qc_nik']; ?></div>
-                            </td>
-                            <td class="mono" style="font-size:11px;"><?php echo htmlspecialchars($d['order_code']); ?></td>
-                            <td>
-                                <?php echo htmlspecialchars($d['part_name']); ?>
-                                <div style="font-size:10px;color:var(--text3);"><?php echo htmlspecialchars($d['part_no']); ?></div>
-                            </td>
-                            <td class="mono" style="font-size:10px;color:var(--text3);"><?php echo htmlspecialchars($d['part_no']); ?></td>
-                            <td><span class="mesin-badge <?php echo $mk; ?>"><?php echo htmlspecialchars($d['qc_machine']); ?></span></td>
-                            <td class="mono" style="font-size:11px;"><?php echo date('H:i', strtotime($d['start_time'])); ?></td>
-                            <td class="mono" style="font-size:11px;"><?php echo date('H:i', strtotime($d['end_time'])); ?></td>
-                            <td class="mono"><?php echo "{$dur_m}m {$dur_s}s"; ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                <?php endif; ?>
-            </div>
-        </div>
 
     </div>
 </div>
@@ -777,5 +698,6 @@ function fmtTime(int $sec): string {
         autoScroll();
     }
 </script>
+<script src="../assets/components.js"></script>
 </body>
 </html>

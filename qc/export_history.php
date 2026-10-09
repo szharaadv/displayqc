@@ -23,6 +23,8 @@ function qcValidDate(?string $v): ?string {
 $tanggal_dari   = qcValidDate($_GET['tanggal_dari'] ?? null) ?? date('Y-m-d');
 $tanggal_sampai = qcValidDate($_GET['tanggal_sampai'] ?? null) ?? date('Y-m-d');
 
+$user_id = (int)$_SESSION['id'];   // History hanya order milik user ini (dibuat / pernah dikerjakan)
+
 $status_filter = isset($_GET['status']) ? $_GET['status'] : 'all';
 
 $whereStatus = "";
@@ -63,6 +65,8 @@ $query = mysqli_query($conn, "
     LEFT JOIN sampling_process_steps sps ON so.id = sps.order_id
     LEFT JOIN users u ON sps.qc_user_id = u.id
     WHERE DATE(so.created_at) BETWEEN '$tanggal_dari' AND '$tanggal_sampai'
+      AND (so.created_by = $user_id
+           OR EXISTS (SELECT 1 FROM sampling_process_steps x WHERE x.order_id = so.id AND x.qc_user_id = $user_id))
     $whereStatus
     GROUP BY
         so.id, so.order_code, so.category, so.status, so.created_at,
@@ -70,7 +74,7 @@ $query = mysqli_query($conn, "
     ORDER BY so.created_at DESC
 ");
 
-$filename = 'History_QC_' . $tanggal_dari . '_sd_' . $tanggal_sampai . '.csv';
+$filename = 'History_QC_' . $tanggal_dari . '_to_' . $tanggal_sampai . '.csv';
 header('Content-Type: text/csv; charset=UTF-8');
 header('Content-Disposition: attachment; filename="' . $filename . '"');
 header('Cache-Control: max-age=0');
@@ -81,10 +85,10 @@ $output = fopen('php://output', 'w');
 fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
 // Info header laporan
-fputcsv($output, ['LAPORAN HISTORY QC SAMPLING']);
+fputcsv($output, ['QC SAMPLING HISTORY REPORT']);
 fputcsv($output, [
-    'Periode: ' . date('d M Y', strtotime($tanggal_dari)) . ' s/d ' . date('d M Y', strtotime($tanggal_sampai)),
-    'Diekspor: ' . date('d M Y H:i')
+    'Period: ' . date('d M Y', strtotime($tanggal_dari)) . ' to ' . date('d M Y', strtotime($tanggal_sampai)),
+    'Exported: ' . date('d M Y H:i')
 ]);
 fputcsv($output, []);
 
@@ -107,7 +111,7 @@ fputcsv($output, [
     'HARDNESS CHECK',
     'Start',
     'Finish',
-    'Durasi (HH:MM:SS)',
+    'Duration (HH:MM:SS)',
     'Status',
     'Created At',
 ]);
@@ -156,7 +160,7 @@ while ($row = mysqli_fetch_assoc($query)) {
 }
 
 fputcsv($output, []);
-fputcsv($output, ['Total: ' . ($no - 1) . ' order']);
+fputcsv($output, ['Total: ' . ($no - 1) . ' orders']);
 
 fclose($output);
 exit;

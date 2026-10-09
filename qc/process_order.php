@@ -74,6 +74,27 @@ if ($cekMesin && mysqli_num_rows($cekMesin) > 0) {
     }
 }
 
+// Pindah mesin = mesin sebelumnya otomatis selesai (✅), supaya tidak ada dua
+// mesin berjalan bersamaan (waktu aktif terhitung dobel di ratio).
+//  - mesin yang sedang jalan  -> done, end_time = sekarang
+//  - mesin yang sedang di-pause (step terakhir order) -> done, end_time tetap saat pause
+$ditutup = [];   // nama mesin yang ditutup, untuk pesan di layar
+$q = mysqli_query($conn, "SELECT DISTINCT qc_machine FROM sampling_process_steps WHERE order_id = $order_id AND status = 'in_progress'");
+while ($r = mysqli_fetch_assoc($q)) $ditutup[] = $r['qc_machine'];
+mysqli_query($conn, "
+    UPDATE sampling_process_steps
+    SET status = 'done', end_time = NOW()
+    WHERE order_id = $order_id AND status = 'in_progress'
+");
+$terakhir = mysqli_fetch_assoc(mysqli_query($conn, "
+    SELECT id, status, qc_machine FROM sampling_process_steps
+    WHERE order_id = $order_id ORDER BY id DESC LIMIT 1
+"));
+if ($terakhir && $terakhir['status'] === 'paused' && $terakhir['qc_machine'] !== $qc_machine) {
+    mysqli_query($conn, "UPDATE sampling_process_steps SET status = 'done' WHERE id = " . (int)$terakhir['id']);
+    $ditutup[] = $terakhir['qc_machine'];
+}
+
 $insert = mysqli_query($conn, "
     INSERT INTO sampling_process_steps (
         order_id,
@@ -106,6 +127,7 @@ if (!$updateOrder) {
     exit;
 }
 
-header("Location: main_display.php?section=progress&process_success=1");
+header("Location: main_display.php?section=progress&process_success=1"
+    . ($ditutup ? '&closed=' . urlencode(implode(', ', array_unique($ditutup))) : ''));
 exit;
 ?>

@@ -25,10 +25,10 @@ try {
 }
 
 $LABEL_TIPE = [
-    'weekday'  => 'Senin – Kamis',
-    'friday'   => 'Jumat',
-    'saturday' => 'Sabtu',
-    'sunday'   => 'Minggu',
+    'weekday'  => 'Monday – Thursday',
+    'friday'   => 'Friday',
+    'saturday' => 'Saturday',
+    'sunday'   => 'Sunday',
 ];
 
 // Ambil jam mulai/selesai + istirahat (menit) untuk sebuah sel form, jatuh ke
@@ -64,7 +64,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setting Shift — QC Yanmar</title>
+    <title>Shift Settings — QC Yanmar</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
@@ -100,7 +100,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         .main { margin-left:var(--sidebar-w); flex:1; min-height:100vh; }
         .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:0 28px; height:56px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
         .topbar-title { font-size:15px; font-weight:700; }
-        .content { padding:24px 28px; max-width:1400px; }
+        .content { padding:24px 28px; }
         .banner { padding:12px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; margin-bottom:16px; }
         .banner.ok { background:var(--green-soft); color:var(--green); }
         .banner.err { background:var(--red-soft); color:var(--red); }
@@ -140,7 +140,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 <?php $active_nav = 'shift_setting'; include __DIR__ . '/_sidebar.php'; ?>
 
 <div class="main">
-    <div class="topbar"><span class="topbar-title">Setting Shift</span></div>
+    <div class="topbar"><span class="topbar-title">Shift Settings</span></div>
     <div class="content">
 
         <?php if (isset($_GET['ok'])): ?>
@@ -151,10 +151,10 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         <?php endif; ?>
 
         <p class="intro">
-            Atur jam mulai, jam selesai, dan <strong>lama istirahat (menit)</strong> tiap shift.
-            <strong>Jam efektif</strong> dihitung otomatis = (jam selesai − jam mulai) − istirahat, dan dipakai
-            sebagai pembagi Operation Ratio. Untuk shift malam, jam selesai boleh lebih kecil dari jam mulai
-            (otomatis dianggap lewat tengah malam).
+            Set the start time, end time, and <strong>break length (minutes)</strong> for each shift.
+            <strong>Effective hours</strong> are calculated automatically = (end − start) − break, and used
+            as the Operation Ratio divisor. For night shifts, the end time may be earlier than the start time
+            (it is treated as crossing midnight).
         </p>
 
         <form action="shift_setting_action.php" method="POST">
@@ -169,22 +169,22 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                             <div class="shift-row-label">Shift <?php echo $no; ?></div>
                             <div class="field-line">
                                 <div class="field">
-                                    <label>Jam Mulai</label>
+                                    <label>Start Time</label>
                                     <input type="time" class="in-mulai" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][mulai]" value="<?php echo $v['mulai']; ?>" required>
                                 </div>
                                 <div class="field">
-                                    <label>Jam Selesai</label>
+                                    <label>End Time</label>
                                     <input type="time" class="in-selesai" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][selesai]" value="<?php echo $v['selesai']; ?>" required>
                                 </div>
                                 <div class="field">
-                                    <label>Istirahat</label>
+                                    <label>Break</label>
                                     <input type="number" class="in-istirahat" step="1" min="0" max="1440" name="shift[<?php echo $tipe; ?>][<?php echo $no; ?>][istirahat]" value="<?php echo $v['istirahat']; ?>" required>
-                                    <span class="hint">menit</span>
+                                    <span class="hint">minutes</span>
                                 </div>
                                 <div class="field">
-                                    <label>Jam Efektif</label>
+                                    <label>Effective Hours</label>
                                     <output class="out-efektif">—</output>
-                                    <span class="hint">otomatis (jam kerja bersih)</span>
+                                    <span class="hint">automatic (net working time)</span>
                                 </div>
                             </div>
                             <div class="shift-breakdown">—</div>
@@ -195,9 +195,9 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
             </div>
 
             <div class="actions">
-                <button type="submit" class="btn btn-red">Simpan Semua</button>
-                <a href="dashboard.php" class="btn btn-ghost">Batal</a>
-                <span class="note">Perubahan langsung dipakai untuk semua perhitungan ratio &amp; shift.</span>
+                <button type="submit" class="btn btn-red">Save All</button>
+                <a href="dashboard.php" class="btn btn-ghost">Cancel</a>
+                <span class="note">Changes apply immediately to all ratio &amp; shift calculations.</span>
             </div>
         </form>
     </div>
@@ -214,11 +214,11 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
     }
     function fmtJam(m) {
         var j = m / 60;
-        return (Math.round(j * 100) / 100).toString().replace(/\.00$/, '') + ' jam';
+        return (Math.round(j * 100) / 100).toString().replace(/\.00$/, '') + ' h';
     }
     // menit → "8j 45m" (format jelas untuk rincian)
     function fmtJM(m) {
-        return Math.floor(m / 60) + 'j ' + (m % 60) + 'm';
+        return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
     }
     function hitung(row) {
         var vMulai   = row.querySelector('.in-mulai').value;
@@ -238,16 +238,16 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         var efektif = span - ist;
         if (efektif <= 0) {
             out.textContent = 'invalid'; out.classList.add('bad');
-            if (bd) { bd.textContent = 'Istirahat melebihi durasi shift'; bd.classList.add('bad'); }
+            if (bd) { bd.textContent = 'Break exceeds the shift duration'; bd.classList.add('bad'); }
             return;
         }
         out.textContent = fmtJam(efektif); out.classList.remove('bad');
         if (bd) {
             bd.classList.remove('bad');
             // Rincian dengan jam format 24-jam yang tidak ambigu.
-            bd.innerHTML = vMulai + ' → ' + vSelesai + ' · durasi ' + fmtJM(span)
-                + ' − istirahat ' + ist + 'm '
-                + '<span class="eq">= ' + fmtJM(efektif) + ' efektif</span>';
+            bd.innerHTML = vMulai + ' → ' + vSelesai + ' · duration ' + fmtJM(span)
+                + ' − break ' + ist + 'm '
+                + '<span class="eq">= ' + fmtJM(efektif) + ' effective</span>';
         }
     }
     document.querySelectorAll('.shift-row').forEach(function (row) {

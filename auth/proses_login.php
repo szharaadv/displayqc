@@ -27,6 +27,8 @@ if ($user && password_verify($password, $user['password'])) {
 
     if ($user['role'] === 'admin') {
         header("Location: ../admin/dashboard.php");
+    } elseif ($user['role'] === 'foreman') {
+        header("Location: ../foreman/absensi.php");
     } else {
         header("Location: ../menu.php");
     }

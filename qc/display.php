@@ -54,19 +54,19 @@ $query = mysqli_query($conn, "
 
         <?php if (isset($_GET['success']) && isset($_GET['order_code'])): ?>
             <p class="success">
-                Order <strong><?php echo htmlspecialchars($_GET['order_code']); ?></strong> berhasil dibuat dan masuk ke request QC.
+                Order <strong><?php echo htmlspecialchars($_GET['order_code']); ?></strong> created and added to the QC request queue.
             </p>
         <?php endif; ?>
 
         <?php if (isset($_GET['delete_success'])): ?>
-            <p class="success">Order berhasil dihapus.</p>
+            <p class="success">Order deleted.</p>
         <?php endif; ?>
 
         <?php if (isset($_GET['delete_error'])): ?>
-            <p class="error">Order gagal dihapus.</p>
+            <p class="error">Failed to delete order.</p>
         <?php endif; ?>
 
-        <a class="btn" href="../menu.php">Kembali ke Menu</a>
+        <a class="btn" href="../menu.php">Back to Menu</a>
 
         <?php if ($is_qc): ?>
             <a class="btn" href="main_display.php?section=job">Main Display QC</a>
@@ -87,7 +87,7 @@ $query = mysqli_query($conn, "
                 <th>Qty</th>
                 <th>Status</th>
                 <th>Created At</th>
-                <th>Aksi</th>
+                <th>Action</th>
             </tr>
 
             <?php while($row = mysqli_fetch_assoc($query)): ?>
@@ -119,8 +119,8 @@ $query = mysqli_query($conn, "
                     <?php if ($row['status'] == 'waiting'): ?>
                         <a class="btn btn-danger"
                            href="delete_order.php?id=<?php echo $row['id']; ?>"
-                           onclick="return confirm('Yakin mau hapus order ini?');">
-                           Hapus
+                           onclick="return confirm('Delete this order?');">
+                           Delete
                         </a>
                     <?php else: ?>
                         <span>-</span>

@@ -31,7 +31,7 @@ if (
     mysqli_num_rows($cekLine) == 0 ||
     mysqli_num_rows($cekMachine) == 0
 ) {
-    die("Data category, part, line, atau machine tidak sesuai.");
+    die("Category, part, line, or machine data does not match.");
 }
 
 $order_code = 'ORD-' . date('YmdHis');
@@ -43,6 +43,6 @@ if (mysqli_query($conn, $sql)) {
     header("Location: ../qc/display.php?success=1&order_code=" . urlencode($order_code));
     exit;
 } else {
-    echo "Gagal simpan order: " . mysqli_error($conn);
+    echo "Failed to save order: " . mysqli_error($conn);
 }
 ?>

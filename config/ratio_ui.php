@@ -12,20 +12,20 @@
 /** Detik → "8j 5m". */
 function qcFmtDurasiDetik(int $detik): string {
     $detik = max(0, $detik);
-    return intdiv($detik, 3600) . 'j ' . intdiv($detik % 3600, 60) . 'm';
+    return intdiv($detik, 3600) . 'h ' . intdiv($detik % 3600, 60) . 'm';
 }
 
 /** Menit → "8j 5m". */
 function qcFmtDurasiMenit(int $menit): string {
     $menit = max(0, $menit);
-    return intdiv($menit, 60) . 'j ' . ($menit % 60) . 'm';
+    return intdiv($menit, 60) . 'h ' . ($menit % 60) . 'm';
 }
 
 /** Baris kecil "X aktif ⁄ Y efektif" untuk ditaruh di bawah angka ratio. */
 function qcRatioFraction(int $total_detik, int $work_sec): string {
     return '<div class="qc-frac"><b>' . qcFmtDurasiDetik($total_detik)
-         . '</b> aktif &frasl; <b>' . qcFmtDurasiDetik(max(0, $work_sec))
-         . '</b> efektif</div>';
+         . '</b> active &frasl; <b>' . qcFmtDurasiDetik(max(0, $work_sec))
+         . '</b> effective</div>';
 }
 
 /**
@@ -41,12 +41,12 @@ function qcRatioHelp(int $mulai_ts, int $selesai_ts, int $work_sec): string {
     $selesai = date('H:i', $selesai_ts);
 
     $titleAttr = htmlspecialchars(
-        $mulai . '–' . $selesai . ' · durasi ' . qcFmtDurasiMenit($durasi_menit)
-        . ' − istirahat ' . $istirahat . 'm = ' . qcFmtDurasiMenit($efektif_menit) . ' efektif'
+        $mulai . '–' . $selesai . ' · duration ' . qcFmtDurasiMenit($durasi_menit)
+        . ' − break ' . $istirahat . 'm = ' . qcFmtDurasiMenit($efektif_menit) . ' effective'
     );
 
     ob_start(); ?>
-<span class="qc-help" tabindex="0" title="<?php echo $titleAttr; ?>">?<span class="qc-tip"><span class="r"><span class="lab"><?php echo $mulai; ?>–<?php echo $selesai; ?></span><span class="num">durasi <?php echo qcFmtDurasiMenit($durasi_menit); ?></span></span><span class="r"><span class="lab">− Istirahat</span><span class="num"><?php echo $istirahat; ?>m</span></span><span class="r tot"><span class="lab">= Jam efektif</span><span class="num"><?php echo qcFmtDurasiMenit($efektif_menit); ?></span></span></span></span>
+<span class="qc-help" tabindex="0" title="<?php echo $titleAttr; ?>">?<span class="qc-tip"><span class="r"><span class="lab"><?php echo $mulai; ?>–<?php echo $selesai; ?></span><span class="num">duration <?php echo qcFmtDurasiMenit($durasi_menit); ?></span></span><span class="r"><span class="lab">− Break</span><span class="num"><?php echo $istirahat; ?>m</span></span><span class="r tot"><span class="lab">= Effective hours</span><span class="num"><?php echo qcFmtDurasiMenit($efektif_menit); ?></span></span></span></span>
 <?php
     return ob_get_clean();
 }

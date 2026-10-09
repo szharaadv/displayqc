@@ -14,9 +14,9 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] != 'operator' && $_SESSION['
 <body>
     <div class="container">
         <h2>Dashboard Operator</h2>
-        <p>Login sebagai: <strong><?php echo $_SESSION['nik']; ?></strong></p>
+        <p>Signed in as: <strong><?php echo $_SESSION['nik']; ?></strong></p>
 
-        <a class="btn" href="create_order.php">Buat Order Sampling</a>
+        <a class="btn" href="create_order.php">Create Sampling Order</a>
         <a class="btn btn-danger" href="../auth/logout.php">Logout</a>
     </div>
 </body>

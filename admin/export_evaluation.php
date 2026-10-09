@@ -20,7 +20,7 @@ $month_pad = str_pad($sel_month, 2, '0', STR_PAD_LEFT);
 $date_from = "{$sel_year}-{$month_pad}-01";
 $date_to   = date('Y-m-t', strtotime($date_from));
 
-$month_names  = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+$month_names  = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
 $period_label = $month_names[$sel_month] . ' ' . $sel_year;
 
 $whereNik = '';
@@ -30,9 +30,9 @@ if ($sel_nik !== 'all') {
 }
 
 function evalStatus(float $r): string {
-    if ($r >= 80) return 'Produktif';
+    if ($r >= 80) return 'Productive';
     if ($r >= 50) return 'Normal';
-    return 'Perlu Perhatian';
+    return 'Needs Attention';
 }
 
 // ── Step count per shift per staff: [shift_date|shift_nama][uid] = jumlah ────
@@ -122,12 +122,12 @@ while ($row = mysqli_fetch_assoc($summaryQuery)) $summary_data[] = $row;
 
 // ── Sheet 1: Ringkasan per Staff (1 baris/staff, buat evaluasi cepat) ────────
 $sheetRingkasan = [];
-$sheetRingkasan[] = [xb('LAPORAN EVALUASI QC BULANAN — ' . strtoupper($period_label))];
-$sheetRingkasan[] = ['Diekspor: ' . date('d M Y H:i')];
+$sheetRingkasan[] = [xb('MONTHLY QC EVALUATION REPORT — ' . strtoupper($period_label))];
+$sheetRingkasan[] = ['Exported: ' . date('d M Y H:i')];
 $sheetRingkasan[] = [];
 $sheetRingkasan[] = [
-    xb('No'), xb('Nama'), xb('NIK'), xb('Total Order'), xb('Total Step'),
-    xb('Rata-rata Ratio (%)'), xb('Status Evaluasi'),
+    xb('No'), xb('Name'), xb('NIK'), xb('Total Order'), xb('Total Step'),
+    xb('Average Ratio (%)'), xb('Evaluation Status'),
     xb('CMM'), xb('RONDCOM'), xb('ROUGHNESS'), xb('CONTOUR'),
     xb('PROFIL PROJECTOR'), xb('MANUAL'), xb('HARDNESS CHECK'),
 ];
@@ -149,11 +149,11 @@ foreach ($summary_data as $s) {
 
 // ── Sheet 2: Detail Harian per Staff (list vertikal, urut nama lalu tanggal) ──
 $sheetDetail = [];
-$sheetDetail[] = [xb('DETAIL HARIAN QC — ' . strtoupper($period_label))];
+$sheetDetail[] = [xb('QC DAILY DETAIL — ' . strtoupper($period_label))];
 $sheetDetail[] = [];
 $sheetDetail[] = [
-    xb('Nama'), xb('NIK'), xb('Tanggal'), xb('Shift'),
-    xb('Total Step'), xb('Waktu Aktif (jam)'), xb('Operation Ratio (%)'), xb('Status'),
+    xb('Name'), xb('NIK'), xb('Date'), xb('Shift'),
+    xb('Total Step'), xb('Active Time (hours)'), xb('Operation Ratio (%)'), xb('Status'),
 ];
 
 $detailRows = [];
@@ -189,9 +189,36 @@ foreach ($detailRows as $d) {
     ];
 }
 
-$filename = 'Laporan_Evaluasi_QC_' . $month_names[$sel_month] . '_' . $sel_year . '.xlsx';
+// ── Sheet 3: log per step (dulu tabel "Detail Step" di halaman Evaluation) ──
+$stepQuery = mysqli_query($conn, "
+    SELECT DATE(sps.start_time) AS tgl, u.nama, u.nik, so.order_code, mp.part_name, mp.part_no,
+           sps.qc_machine, sps.start_time, sps.end_time,
+           TIMESTAMPDIFF(SECOND, sps.start_time, sps.end_time) AS durasi_detik
+    FROM sampling_process_steps sps
+    JOIN users u ON sps.qc_user_id = u.id
+    JOIN sampling_orders so ON sps.order_id = so.id
+    JOIN master_parts mp ON so.part_id = mp.id
+    WHERE DATE(sps.start_time) BETWEEN '$date_from' AND '$date_to'
+      AND sps.status = 'done'
+      AND sps.end_time IS NOT NULL
+      $whereNik
+    ORDER BY sps.start_time
+");
+$sheetStep = [[xb('No'), xb('Date'), xb('Name'), xb('NIK'), xb('Order Code'), xb('Part Name'), xb('Part No'),
+               xb('QC Machine'), xb('Start'), xb('End'), xb('Duration (min)')]];
+$no = 1;
+while ($s = mysqli_fetch_assoc($stepQuery)) {
+    $sheetStep[] = [
+        $no++, $s['tgl'], $s['nama'], $s['nik'], $s['order_code'], $s['part_name'], $s['part_no'],
+        $s['qc_machine'], date('H:i', strtotime($s['start_time'])), date('H:i', strtotime($s['end_time'])),
+        round((int)$s['durasi_detik'] / 60, 2),
+    ];
+}
+
+$filename = 'QC_Evaluation_Report_' . $month_names[$sel_month] . '_' . $sel_year . '.xlsx';
 
 xlsxKirim($filename, [
-    'Ringkasan per Staff' => $sheetRingkasan,
-    'Detail Harian'       => $sheetDetail,
+    'Summary per Staff' => $sheetRingkasan,
+    'Daily Detail'      => $sheetDetail,
+    'Step Log'          => $sheetStep,
 ]);

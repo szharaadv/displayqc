@@ -24,18 +24,18 @@ foreach ($map as $tgl => $info) {
 }
 ksort($pengecualian);
 
-$BULAN = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-          'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-$HARI  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+$BULAN = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'];
+$HARI  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 $nama_login = $_SESSION['nama'] ?? 'Admin';
 ?>
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kalender Kerja — QC Yanmar</title>
+    <title>Work Calendar — QC Yanmar</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
@@ -54,7 +54,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         .year-nav a { width:30px; height:30px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text2); text-decoration:none; font-weight:700; }
         .year-nav a:hover { background:var(--surface); color:var(--red); border-color:var(--red-mid); }
         .year-nav .yr { font-size:14px; font-weight:700; min-width:56px; text-align:center; }
-        .content { padding:24px 28px; max-width:1240px; }
+        .content { padding:24px 28px; }
         .banner { padding:12px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; margin-bottom:16px; }
         .banner.ok { background:var(--green-soft); color:var(--green); }
         .banner.err { background:var(--red-soft); color:var(--red); }
@@ -117,7 +117,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 
 <div class="main">
     <div class="topbar">
-        <span class="topbar-title">Kalender Kerja YADIN</span>
+        <span class="topbar-title">YADIN Work Calendar</span>
         <div class="year-nav">
             <a href="?y=<?php echo $tahun - 1; ?>">&lsaquo;</a>
             <span class="yr"><?php echo $tahun; ?></span>
@@ -134,16 +134,16 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         <?php endif; ?>
 
         <p class="intro">
-            Hari normal diturunkan otomatis: <strong>Senin–Jumat kerja</strong>, <strong>Sabtu–Minggu libur</strong>.
-            Klik tanggal untuk menandainya sebagai <strong>libur</strong> (hari kerja yang diliburkan) atau
-            <strong>lembur</strong> (akhir pekan yang tetap dikerjakan). Hanya tanggal pengecualian yang disimpan.
+            Normal days are derived automatically: <strong>Monday–Friday working</strong>, <strong>Saturday–Sunday off</strong>.
+            Click a date to mark it as a <strong>holiday</strong> (a working day that is off) or
+            <strong>overtime</strong> (a weekend that is still worked). Only exception dates are stored.
         </p>
 
         <div class="legend">
-            <span><i class="swatch sw-work"></i> Hari kerja</span>
-            <span><i class="swatch sw-off"></i> Libur akhir pekan</span>
-            <span><i class="swatch sw-holiday"></i> Libur (holiday)</span>
-            <span><i class="swatch sw-overtime"></i> Lembur (overtime)</span>
+            <span><i class="swatch sw-work"></i> Working day</span>
+            <span><i class="swatch sw-off"></i> Weekend off</span>
+            <span><i class="swatch sw-holiday"></i> Holiday</span>
+            <span><i class="swatch sw-overtime"></i> Overtime</span>
         </div>
 
         <div class="cal-grid">
@@ -180,12 +180,12 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
         </div>
 
         <div class="excep">
-            <div class="excep-head">Daftar Pengecualian <?php echo $tahun; ?> (<?php echo count($pengecualian); ?>)</div>
+            <div class="excep-head">Exceptions <?php echo $tahun; ?> (<?php echo count($pengecualian); ?>)</div>
             <?php if (!$pengecualian): ?>
-                <div class="tbl-empty">Belum ada pengecualian untuk tahun ini.</div>
+                <div class="tbl-empty">No exceptions for this year yet.</div>
             <?php else: ?>
             <table>
-                <thead><tr><th>Tanggal</th><th>Hari</th><th>Tipe</th><th>Keterangan</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Description</th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($pengecualian as $tgl => $info):
                     $ts = strtotime($tgl);
@@ -194,12 +194,12 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
                     <tr>
                         <td><?php echo date('d M Y', $ts); ?></td>
                         <td><?php echo $namaHari; ?></td>
-                        <td><span class="pill <?php echo $info['tipe']; ?>"><?php echo $info['tipe'] === 'holiday' ? 'Libur' : 'Lembur'; ?></span></td>
+                        <td><span class="pill <?php echo $info['tipe']; ?>"><?php echo $info['tipe'] === 'holiday' ? 'Holiday' : 'Overtime'; ?></span></td>
                         <td><?php echo htmlspecialchars($info['label']); ?></td>
                         <td><a href="#" class="link-edit"
                                data-date="<?php echo $tgl; ?>"
                                data-tipe="<?php echo $info['tipe']; ?>"
-                               data-label="<?php echo htmlspecialchars($info['label']); ?>">Ubah</a></td>
+                               data-label="<?php echo htmlspecialchars($info['label']); ?>">Edit</a></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -212,25 +212,25 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 <!-- Modal edit -->
 <div class="overlay" id="overlay">
     <form class="modal" action="kalender_action.php" method="POST">
-        <div class="modal-head">Atur Tanggal</div>
+        <div class="modal-head">Set Date</div>
         <div class="modal-body">
-            <span class="lbl">Tanggal</span>
+            <span class="lbl">Date</span>
             <div class="val-date" id="m-date-text">—</div>
             <input type="hidden" name="tanggal" id="m-tanggal">
 
             <span class="lbl">Status</span>
             <div class="radio-set">
-                <label><input type="radio" name="tipe" value="normal" id="r-normal"> Normal (ikut aturan hari)</label>
-                <label><input type="radio" name="tipe" value="holiday" id="r-holiday"> Libur (holiday)</label>
-                <label><input type="radio" name="tipe" value="overtime" id="r-overtime"> Lembur (overtime)</label>
+                <label><input type="radio" name="tipe" value="normal" id="r-normal"> Normal (follows the weekday rule)</label>
+                <label><input type="radio" name="tipe" value="holiday" id="r-holiday"> Holiday</label>
+                <label><input type="radio" name="tipe" value="overtime" id="r-overtime"> Overtime</label>
             </div>
 
-            <span class="lbl">Keterangan</span>
-            <input type="text" name="label" id="m-label" maxlength="100" placeholder="mis. Tahun Baru / Lembur Sabtu">
+            <span class="lbl">Description</span>
+            <input type="text" name="label" id="m-label" maxlength="100" placeholder="e.g. New Year / Saturday Overtime">
         </div>
         <div class="modal-foot">
-            <button type="button" class="btn btn-ghost" id="m-cancel">Batal</button>
-            <button type="submit" class="btn btn-red">Simpan</button>
+            <button type="button" class="btn btn-ghost" id="m-cancel">Cancel</button>
+            <button type="submit" class="btn btn-red">Save</button>
         </div>
     </form>
 </div>
@@ -244,7 +244,7 @@ $nama_login = $_SESSION['nama'] ?? 'Admin';
 
     function fmt(iso) {
         var p = iso.split('-');
-        var bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+        var bulan = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         return parseInt(p[2], 10) + ' ' + bulan[parseInt(p[1], 10) - 1] + ' ' + p[0];
     }
 

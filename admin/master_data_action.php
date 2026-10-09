@@ -39,7 +39,7 @@ $tab    = $_REQUEST['tab']    ?? '';
 $aksi   = $_REQUEST['aksi']   ?? '';
 
 if (!isset($TABEL[$tab])) {
-    header("Location: master_data.php?err=" . urlencode('Tabel master tidak valid.'));
+    header("Location: master_data.php?err=" . urlencode('Invalid master table.'));
     exit;
 }
 $cfg   = $TABEL[$tab];
@@ -62,27 +62,27 @@ if ($aksi === 'hapus') {
     $cekQ   = mysqli_query($conn, "SELECT COUNT(*) AS n FROM sampling_orders WHERE $fk = $id");
     $pakai  = (int)mysqli_fetch_assoc($cekQ)['n'];
     if ($pakai > 0) {
-        kembali($tab, 'err', "Tidak bisa dihapus: data ini sudah dipakai di $pakai order. Edit saja bila perlu koreksi.");
+        kembali($tab, 'err', "Cannot delete: this data is used in $pakai orders. Edit it instead if a correction is needed.");
     }
 
     $del = mysqli_query($conn, "DELETE FROM $tabel WHERE id = $id");
     if ($del && mysqli_affected_rows($conn) > 0) {
-        kembali($tab, 'ok', 'Data master berhasil dihapus.');
+        kembali($tab, 'ok', 'Master data deleted.');
     }
-    kembali($tab, 'err', 'Data gagal dihapus atau tidak ditemukan.');
+    kembali($tab, 'err', 'Failed to delete data, or it was not found.');
 }
 
 // ── TAMBAH / EDIT ─────────────────────────────────────────────────────────────
 if ($aksi === 'simpan') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        kembali($tab, 'err', 'Metode tidak valid.');
+        kembali($tab, 'err', 'Invalid method.');
     }
 
     $id       = (int)($_POST['id'] ?? 0);   // 0 = tambah baru
     $category = trim($_POST['category'] ?? '');
 
     if (!in_array($category, $KATEGORI, true)) {
-        kembali($tab, 'err', 'Category harus salah satu dari: ' . implode(', ', $KATEGORI));
+        kembali($tab, 'err', 'Category must be one of: ' . implode(', ', $KATEGORI));
     }
 
     // Kumpulkan & validasi field data
@@ -90,7 +90,7 @@ if ($aksi === 'simpan') {
     foreach ($cfg['fields'] as $f) {
         $val = trim($_POST[$f] ?? '');
         if ($val === '') {
-            kembali($tab, 'err', 'Semua kolom wajib diisi.');
+            kembali($tab, 'err', 'All fields are required.');
         }
         if (mb_strlen($val) > $cfg['maxlen'][$f]) {
             kembali($tab, 'err', "Kolom $f maksimal {$cfg['maxlen'][$f]} karakter.");
@@ -106,7 +106,7 @@ if ($aksi === 'simpan') {
     $dupWhere = implode(' AND ', $dupCond);
     $dupSql   = "SELECT id FROM $tabel WHERE $dupWhere" . ($id > 0 ? " AND id <> $id" : '');
     if (mysqli_num_rows(mysqli_query($conn, $dupSql)) > 0) {
-        kembali($tab, 'err', 'Data yang sama persis sudah ada.');
+        kembali($tab, 'err', 'An identical record already exists.');
     }
 
     if ($id > 0) {
@@ -117,9 +117,9 @@ if ($aksi === 'simpan') {
         }
         $sql = "UPDATE $tabel SET " . implode(', ', $set) . " WHERE id = $id";
         if (mysqli_query($conn, $sql)) {
-            kembali($tab, 'ok', 'Data master berhasil diperbarui.');
+            kembali($tab, 'ok', 'Master data updated.');
         }
-        kembali($tab, 'err', 'Data gagal diperbarui: ' . mysqli_error($conn));
+        kembali($tab, 'err', 'Failed to update data: ' . mysqli_error($conn));
     } else {
         // TAMBAH
         $kolom = implode(', ', array_keys($data));
@@ -129,10 +129,10 @@ if ($aksi === 'simpan') {
         }
         $sql = "INSERT INTO $tabel ($kolom) VALUES (" . implode(', ', $nilai) . ")";
         if (mysqli_query($conn, $sql)) {
-            kembali($tab, 'ok', 'Data master berhasil ditambahkan.');
+            kembali($tab, 'ok', 'Master data added.');
         }
-        kembali($tab, 'err', 'Data gagal ditambahkan: ' . mysqli_error($conn));
+        kembali($tab, 'err', 'Failed to add data: ' . mysqli_error($conn));
     }
 }
 
-kembali($tab, 'err', 'Aksi tidak dikenali.');
+kembali($tab, 'err', 'Unknown action.');

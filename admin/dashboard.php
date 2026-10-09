@@ -252,6 +252,7 @@ $active_staff = count($staff_aktif);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manager Dashboard — QC Yanmar</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/components.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -330,7 +331,7 @@ $active_staff = count($staff_aktif);
         .summary-label { font-size: 11px; color: var(--text3); font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
         .summary-value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; margin-bottom: 4px; }
         .summary-sub   { font-size: 11px; color: var(--text3); }
-        .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .section-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
         .section-head-line { width: 3px; height: 16px; background: var(--red); border-radius: 2px; }
         .section-head-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em; }
         .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -379,7 +380,15 @@ $active_staff = count($staff_aktif);
         .ratio-staff-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
         .ratio-staff-name { font-size: 13px; font-weight: 700; color: var(--text); }
         .ratio-staff-nik  { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
-        .ratio-day-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+        .ratio-day-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: 12px; row-gap: 6px; padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+        .ratio-day-row.lanjut { background: #eff5ff; border-radius: 8px; border-bottom-color: transparent; margin-bottom: 4px; }
+        .ratio-day-row .rd-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+        .ratio-day-row .rd-date { font-size: 11px; font-weight: 600; color: var(--text2); }
+        .ratio-day-row .rd-shift { font-size: 10px; font-weight: 600; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+        .ratio-day-row .rd-val { font-size: 13px; text-align: right; }
+        .ratio-day-row .rd-bar { height: 7px; }
+        .ratio-day-row .rd-time { font-size: 10px; color: var(--text3); font-family: 'JetBrains Mono', monospace; white-space: nowrap; text-align: right; }
+        .ratio-day-row .rd-time .sep { opacity: .6; }
         .ratio-day-row:last-child { border-bottom: none; }
         .ratio-grid-all { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
         /* Kartu ratio bisa diklik untuk membuka pop-up detail */
@@ -423,29 +432,37 @@ $active_staff = count($staff_aktif);
 
     <div class="content">
 
-        <form method="GET" class="filter-card">
-            <div class="filter-group">
-                <label class="filter-label">Hari Kerja</label>
-                <input type="date" name="tanggal" class="filter-input" value="<?php echo htmlspecialchars($date_from); ?>" max="<?php echo $hari_ini_kerja; ?>">
+        <?php
+            $nikQ   = '&nik=' . urlencode($selected_nik);
+            $tglPrev = date('Y-m-d', strtotime("$date_from -1 day"));
+            $tglNext = date('Y-m-d', strtotime("$date_from +1 day"));
+            $bisaMaju = $date_from < $hari_ini_kerja;   // tidak bisa melihat hari kerja yang belum dimulai
+        ?>
+        <form method="GET" class="filterbar">
+            <div class="datenav">
+                <a class="nav-btn" href="?tanggal=<?php echo $tglPrev . $nikQ; ?>" title="Previous day" aria-label="Previous day">‹</a>
+                <label class="fctl" data-picker>
+                    <span class="fctl-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+                    <span class="fctl-txt"><small>Work Day</small><strong><?php echo date('l, j F Y', strtotime($date_from)); ?></strong></span>
+                    <input class="fctl-native" type="date" name="tanggal" value="<?php echo htmlspecialchars($date_from); ?>" max="<?php echo $hari_ini_kerja; ?>" onchange="this.form.submit()" tabindex="-1">
+                </label>
+                <a class="nav-btn <?php echo $bisaMaju ? '' : 'off'; ?>" href="?tanggal=<?php echo $tglNext . $nikQ; ?>" title="Next day" aria-label="Next day">›</a>
             </div>
-            <div class="filter-group">
-                <label class="filter-label">Staff QC</label>
-                <select name="nik" class="filter-input">
-                    <option value="all" <?php echo $selected_nik === 'all' ? 'selected' : ''; ?>>Semua Staff</option>
-                    <?php foreach ($staffList as $s): ?>
-                    <option value="<?php echo $s['nik']; ?>" <?php echo $selected_nik === $s['nik'] ? 'selected' : ''; ?>>
-                        <?php echo htmlspecialchars($s['nama']); ?> (<?php echo $s['nik']; ?>)
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <button type="submit" class="btn-filter">Tampilkan</button>
-            <?php if (!$lihat_hari_ini): ?>
-                <a class="btn-filter" style="background:var(--text2);text-decoration:none;display:inline-flex;align-items:center;" href="dashboard.php">Hari Ini</a>
-            <?php endif; ?>
-            <a class="btn-filter" style="background:var(--green);text-decoration:none;display:inline-flex;align-items:center;"
-               href="export_evaluation.php?month=<?php echo (int)date('m'); ?>&year=<?php echo (int)date('Y'); ?>&nik=<?php echo urlencode($selected_nik); ?>">
-                ⬇ Export Laporan Bulanan (.xlsx)
+            <a class="chip-now <?php echo $lihat_hari_ini ? 'on' : ''; ?>" href="dashboard.php?nik=<?php echo urlencode($selected_nik); ?>">Today</a>
+            <label class="fctl">
+                <span class="fctl-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span>
+                <span class="fctl-txt"><small>QC Staff</small>
+                    <select name="nik" onchange="this.form.submit()">
+                        <option value="all" <?php echo $selected_nik === 'all' ? 'selected' : ''; ?>>All Staff</option>
+                        <?php foreach ($staffList as $s): ?>
+                        <option value="<?php echo $s['nik']; ?>" <?php echo $selected_nik === $s['nik'] ? 'selected' : ''; ?>><?php echo htmlspecialchars($s['nama']); ?> (<?php echo $s['nik']; ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </span>
+            </label>
+            <a class="btn-export push" href="export_evaluation.php?month=<?php echo (int)date('m'); ?>&year=<?php echo (int)date('Y'); ?>&nik=<?php echo urlencode($selected_nik); ?>">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export Monthly Report (.xlsx)
             </a>
         </form>
 
@@ -457,7 +474,7 @@ $active_staff = count($staff_aktif);
                 </div>
                 <div class="summary-label">Total Step</div>
                 <div class="summary-value counter" data-target="<?php echo $total_all_step; ?>">0</div>
-                <div class="summary-sub"><?php echo $lihat_hari_ini ? 'Hari ini' : date('d M Y', strtotime($date_from)); ?></div>
+                <div class="summary-sub"><?php echo $lihat_hari_ini ? 'Today' : date('d M Y', strtotime($date_from)); ?></div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
@@ -466,16 +483,16 @@ $active_staff = count($staff_aktif);
                 </div>
                 <div class="summary-label">Total Order</div>
                 <div class="summary-value counter" data-target="<?php echo $total_all_order; ?>">0</div>
-                <div class="summary-sub">Selesai</div>
+                <div class="summary-sub">Completed</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
                 <div class="summary-icon icon-blue">
                     <svg viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                 </div>
-                <div class="summary-label">Staff Aktif</div>
+                <div class="summary-label">Active Staff</div>
                 <div class="summary-value counter" data-target="<?php echo $active_staff; ?>">0</div>
-                <div class="summary-sub">dari <?php echo count($staff_data); ?> staff</div>
+                <div class="summary-sub">of <?php echo count($staff_data); ?> staff</div>
             </div>
             <div class="summary-card">
                 <div class="summary-card-bar"></div>
@@ -484,7 +501,7 @@ $active_staff = count($staff_aktif);
                 </div>
                 <div class="summary-label">Top Performer</div>
                 <div class="summary-value" style="font-size:16px;padding-top:6px;line-height:1.3;"><?php echo htmlspecialchars($top_staff); ?></div>
-                <div class="summary-sub">Step terbanyak</div>
+                <div class="summary-sub">Most steps</div>
             </div>
         </div>
 
@@ -493,12 +510,12 @@ $active_staff = count($staff_aktif);
                 <div class="section-head-line"></div>
                 <div class="section-head-title">Operation Ratio</div>
                 <?php $shift_aktif = qcLabelShift($shift_kini); ?>
-                <span style="font-size:11px;color:var(--text3);margin-left:8px;">
-                    Shift Aktif: <strong><?php echo $shift_aktif; ?></strong> &nbsp;|&nbsp;
-                    <span style="color:var(--green);font-weight:700;">≥80% Produktif</span> &nbsp;
-                    <span style="color:#f59e0b;font-weight:700;">50–79% Normal</span> &nbsp;
-                    <span style="color:var(--red);font-weight:700;">&lt;50% Perlu Perhatian</span>
-                </span>
+                <div class="ratio-legend">
+                    <span class="lg lg-shift">Active shift: <b><?php echo $shift_aktif; ?></b></span>
+                    <span class="lg lg-high"><i></i>≥80% Productive</span>
+                    <span class="lg lg-mid"><i></i>50–79% Normal</span>
+                    <span class="lg lg-low"><i></i>&lt;50% Needs Attention</span>
+                </div>
             </div>
             <?php echo qcRatioUiStyle(); ?>
             <style>
@@ -516,15 +533,15 @@ $active_staff = count($staff_aktif);
                 return 'low';
             }
             function ratioLabel(float $r): string {
-                if ($r >= 80) return '🟢 Produktif';
+                if ($r >= 80) return '🟢 Productive';
                 if ($r >= 50) return '🟡 Normal';
-                return '🔴 Perhatian';
+                return '🔴 Needs Attention';
             }
             ?>
 
             <?php if ($selected_nik !== 'all'): ?>
                 <?php if (empty($ratio_daily_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
+                    <p style="color:var(--text3);font-size:13px;">No operation ratio data for this period.</p>
                 <?php else: ?>
                 <div class="table-card ratio-table-wrap">
                     <div class="table-head-bar">
@@ -533,7 +550,7 @@ $active_staff = count($staff_aktif);
                     </div>
                     <table class="dash-table">
                         <thead>
-                            <tr><th>Tanggal</th><th>Shift</th><th>Waktu Aktif</th><th style="min-width:200px;">Operation Ratio</th><th>Status</th></tr>
+                            <tr><th>Date</th><th>Shift</th><th>Active Time</th><th style="min-width:200px;">Operation Ratio</th><th>Status</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($ratio_daily_data as $rd):
@@ -546,9 +563,9 @@ $active_staff = count($staff_aktif);
                                 <td class="mono"><?php echo $rd['tgl']; ?></td>
                                 <td>
                                     <span style="font-size:11px;font-weight:600;color:var(--text2);"><?php echo $rd['shift_nama']; ?></span>
-                                    <?php if ($is_lanjut): ?><span class="ratio-lanjut-badge">⏱ Lanjutan</span><div class="ratio-lanjut-src">dari <?php echo date('d M', strtotime($rd['tgl'])); ?> · <?php echo date('H:i', (int)$rd['mulai_ts']); ?>–<?php echo date('H:i', (int)$rd['selesai_ts']); ?></div><?php endif; ?>
+                                    <?php if ($is_lanjut): ?><span class="ratio-lanjut-badge">⏱ Carry-over</span><div class="ratio-lanjut-src">from <?php echo date('d M', strtotime($rd['tgl'])); ?> · <?php echo date('H:i', (int)$rd['mulai_ts']); ?>–<?php echo date('H:i', (int)$rd['selesai_ts']); ?></div><?php endif; ?>
                                 </td>
-                                <td class="mono"><?php echo "{$jam}j {$mnt}m"; ?></td>
+                                <td class="mono"><?php echo "{$jam}h {$mnt}m"; ?></td>
                                 <td>
                                     <div class="ratio-bar-wrap">
                                         <div class="ratio-bar-bg"><div class="ratio-bar-fill ratio-<?php echo $cls; ?>" style="width:<?php echo $rd['ratio']; ?>%"></div></div>
@@ -567,7 +584,7 @@ $active_staff = count($staff_aktif);
 
             <?php else: ?>
                 <?php if (empty($ratio_daily_data)): ?>
-                    <p style="color:var(--text3);font-size:13px;">Belum ada data operation ratio pada periode ini.</p>
+                    <p style="color:var(--text3);font-size:13px;">No operation ratio data for this period.</p>
                 <?php else: ?>
                 <div class="ratio-grid-all">
                     <?php foreach ($ratio_daily_data as $rs):
@@ -595,27 +612,30 @@ $active_staff = count($staff_aktif);
                             $d_dur_menit = (int)round((($d['selesai_ts'] ?? 0) - ($d['mulai_ts'] ?? 0)) / 60);
                             $d_ist       = max(0, $d_dur_menit - (int)round($d_efektif / 60));
                             $d_title     = date('H:i', (int)($d['mulai_ts'] ?? 0)) . '–' . date('H:i', (int)($d['selesai_ts'] ?? 0))
-                                         . ' · durasi ' . qcFmtDurasiMenit($d_dur_menit)
-                                         . ' − istirahat ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' efektif';
+                                         . ' · duration ' . qcFmtDurasiMenit($d_dur_menit)
+                                         . ' − break ' . $d_ist . 'm = ' . qcFmtDurasiMenit((int)round($d_efektif / 60)) . ' effective';
                             $d_lanjut    = ($d['tgl'] !== $date_from);
                         ?>
-                        <div class="ratio-day-row"<?php echo $d_lanjut ? ' style="background:#eff5ff;border-radius:6px;"' : ''; ?>>
-                            <span style="font-size:10px;color:var(--text2);font-family:'JetBrains Mono',monospace;min-width:80px;"><?php echo $d['tgl']; ?></span>
-                            <span style="font-size:10px;color:var(--text3);min-width:44px;"><?php echo $d['shift_nama']; ?><?php if ($d_lanjut): ?><span class="day-lanjut-tag">Lanjutan</span><?php endif; ?></span>
-                            <div class="ratio-bar-bg" style="flex:1;height:8px;"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
-                            <span class="ratio-val <?php echo $dcls; ?>" style="min-width:42px;"><?php echo $d['ratio']; ?>%</span>
-                            <span style="font-size:10px;color:var(--text3);min-width:78px;text-align:right;font-family:'JetBrains Mono',monospace;" title="<?php echo htmlspecialchars($d_title); ?>"><?php echo qcFmtDurasiDetik((int)$d['total_detik']); ?> <span style="color:var(--text3);opacity:.6;">⁄</span> <?php echo qcFmtDurasiDetik($d_efektif); ?></span>
+                        <div class="ratio-day-row<?php echo $d_lanjut ? ' lanjut' : ''; ?>">
+                            <span class="rd-meta">
+                                <span class="rd-date"><?php echo date('d M Y', strtotime($d['tgl'])); ?></span>
+                                <span class="rd-shift"><?php echo $d['shift_nama']; ?></span>
+                                <?php if ($d_lanjut): ?><span class="day-lanjut-tag">Carry-over</span><?php endif; ?>
+                            </span>
+                            <span class="ratio-val <?php echo $dcls; ?> rd-val"><?php echo $d['ratio']; ?>%</span>
+                            <div class="ratio-bar-bg rd-bar"><div class="ratio-bar-fill ratio-<?php echo $dcls; ?>" style="width:<?php echo $d['ratio']; ?>%"></div></div>
+                            <span class="rd-time" title="<?php echo htmlspecialchars($d_title); ?>"><?php echo qcFmtDurasiDetik((int)$d['total_detik']); ?> <span class="sep">⁄</span> <?php echo qcFmtDurasiDetik($d_efektif); ?></span>
                         </div>
                         <?php endforeach; ?>
 
                         <div class="ratio-toggle">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M21 14v7H3V3h7"/></svg>
-                            <span>Lihat detail order (<?php echo $jml_step; ?>)</span>
+                            <span>View order details (<?php echo $jml_step; ?>)</span>
                         </div>
 
                         <div class="ratio-detail">
                             <?php if (empty($detail)): ?>
-                                <div class="ratio-detail-empty">Tidak ada detail order.</div>
+                                <div class="ratio-detail-empty">No order details.</div>
                             <?php else: foreach ($detail as $it):
                                 $ds  = (int)$it['durasi'];
                                 $dm  = floor($ds / 60);
@@ -652,10 +672,10 @@ $active_staff = count($staff_aktif);
 
         <div class="section-head">
             <div class="section-head-line"></div>
-            <div class="section-head-title">Detail per Staff</div>
+            <div class="section-head-title">Details per Staff</div>
         </div>
         <?php if (empty($staff_aktif)): ?>
-            <p style="color:var(--text3);font-size:13px;margin-bottom:24px;">Belum ada staff yang mengerjakan order pada periode ini.</p>
+            <p style="color:var(--text3);font-size:13px;margin-bottom:24px;">No staff worked on orders in this period.</p>
         <?php else: ?>
         <div class="staff-grid">
             <?php foreach ($staff_aktif as $staff):
@@ -702,25 +722,14 @@ $active_staff = count($staff_aktif);
         </div>
         <?php endif; ?>
 
-        <?php if ($selected_nik === 'all'): ?>
+        <?php if ($selected_nik !== 'all'): ?>
         <div class="charts-grid">
             <div class="chart-card">
-                <div class="chart-title">Total Step per Staff</div>
-                <canvas id="chartStep" height="120"></canvas>
-            </div>
-            <div class="chart-card">
-                <div class="chart-title">Total Order per Staff</div>
-                <canvas id="chartOrder" height="120"></canvas>
-            </div>
-        </div>
-        <?php else: ?>
-        <div class="charts-grid">
-            <div class="chart-card">
-                <div class="chart-title">Step per Mesin — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
+                <div class="chart-title">Steps per Machine — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
                 <canvas id="chartMesin" height="120"></canvas>
             </div>
             <div class="chart-card full">
-                <div class="chart-title">Aktivitas Harian — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
+                <div class="chart-title">Daily Activity — <?php echo htmlspecialchars($staff_data[0]['nama'] ?? ''); ?></div>
                 <canvas id="chartHarian" height="80"></canvas>
             </div>
         </div>
@@ -765,21 +774,7 @@ const chartOpts = {
     }
 };
 
-<?php if ($selected_nik === 'all'): ?>
-const staffNames  = <?php echo json_encode(array_column($staff_aktif, 'nama')); ?>;
-const totalSteps  = <?php echo json_encode(array_map('intval', array_column($staff_aktif, 'total_step'))); ?>;
-const totalOrders = <?php echo json_encode(array_map('intval', array_column($staff_aktif, 'total_order'))); ?>;
-new Chart(document.getElementById('chartStep'), {
-    type: 'bar',
-    data: { labels: staffNames, datasets: [{ data: totalSteps, backgroundColor: 'rgba(204,0,0,0.75)', borderColor: '#CC0000', borderWidth: 1, borderRadius: 5 }] },
-    options: chartOpts
-});
-new Chart(document.getElementById('chartOrder'), {
-    type: 'bar',
-    data: { labels: staffNames, datasets: [{ data: totalOrders, backgroundColor: 'rgba(5,150,105,0.7)', borderColor: '#059669', borderWidth: 1, borderRadius: 5 }] },
-    options: chartOpts
-});
-<?php else: ?>
+<?php if ($selected_nik !== 'all'): ?>
 const mesinLabels = ['CMM','RONDCOM','ROUGHNESS','CONTOUR','PROFIL PROJ.','MANUAL','HARDNESS'];
 const mesinData   = [
     <?php echo (int)($staff_data[0]['cmm_count']      ?? 0); ?>,
@@ -857,5 +852,6 @@ if (contentEl) {
     autoScroll();
 }
 </script>
+<script src="../assets/components.js"></script>
 </body>
 </html>

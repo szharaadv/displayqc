@@ -43,10 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     keterangan     = '$keterangan',
                     updated_at     = NOW()
             ");
-            if ($res) $msg_success = "Standard cycle time berhasil disimpan!";
-            else $msg_error = "Gagal menyimpan data.";
+            if ($res) $msg_success = "Standard cycle time saved!";
+            else $msg_error = "Failed to save data.";
         } else {
-            $msg_error = "Semua field wajib diisi dan waktu harus lebih dari 0.";
+            $msg_error = "All fields are required and the time must be greater than 0.";
         }
     }
 
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $del_id = (int)($_POST['del_id'] ?? 0);
         if ($del_id > 0) {
             mysqli_query($conn, "DELETE FROM master_cycle_time WHERE id = $del_id");
-            $msg_success = "Data berhasil dihapus.";
+            $msg_success = "Data deleted.";
         }
     }
 }
@@ -204,43 +204,43 @@ foreach ($ct_data as $ct) {
         <div class="form-card">
             <div class="form-title">
                 <div class="form-title-bar"></div>
-                Tambah / Update Standard Cycle Time
+                Add / Update Standard Cycle Time
             </div>
             <form method="POST">
                 <?php echo csrfField(); ?>
                 <input type="hidden" name="action" value="save">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label class="form-label">Kategori Part</label>
+                        <label class="form-label">Part Category</label>
                         <select name="category" class="form-input" required>
-                            <option value="">-- Pilih Kategori --</option>
+                            <option value="">-- Select Category --</option>
                             <?php foreach ($kategori_list as $kat): ?>
                             <option value="<?php echo htmlspecialchars($kat); ?>"><?php echo htmlspecialchars($kat); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Mesin QC</label>
+                        <label class="form-label">QC Machine</label>
                         <select name="qc_machine" class="form-input" required>
-                            <option value="">-- Pilih Mesin --</option>
+                            <option value="">-- Select Machine --</option>
                             <?php foreach ($mesin_list as $m): ?>
                             <option value="<?php echo $m; ?>"><?php echo $m; ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Menit</label>
+                        <label class="form-label">Minutes</label>
                         <input type="number" name="menit" class="form-input" min="0" max="999" placeholder="0" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Detik</label>
+                        <label class="form-label">Seconds</label>
                         <input type="number" name="detik" class="form-input" min="0" max="59" placeholder="0" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Keterangan (opsional)</label>
-                        <input type="text" name="keterangan" class="form-input" placeholder="misal: termasuk setup">
+                        <label class="form-label">Notes (optional)</label>
+                        <input type="text" name="keterangan" class="form-input" placeholder="e.g. includes setup">
                     </div>
-                    <button type="submit" class="btn-save">Simpan</button>
+                    <button type="submit" class="btn-save">Save</button>
                 </div>
             </form>
         </div>
@@ -248,13 +248,13 @@ foreach ($ct_data as $ct) {
         <!-- List -->
         <div class="section-head">
             <div class="section-head-line"></div>
-            <div class="section-head-title">Daftar Standard Cycle Time</div>
+            <div class="section-head-title">Standard Cycle Time List</div>
             <span style="font-size:11px;color:var(--text3);margin-left:8px;"><?php echo count($ct_data); ?> record</span>
         </div>
 
         <?php if (empty($ct_data)): ?>
         <div class="table-card">
-            <div class="empty-state">Belum ada standard cycle time yang diinput.</div>
+            <div class="empty-state">No standard cycle times entered yet.</div>
         </div>
         <?php else: ?>
             <?php foreach ($ct_grouped as $category => $items): ?>
@@ -264,11 +264,11 @@ foreach ($ct_data as $ct) {
                     <table class="dash-table">
                         <thead>
                             <tr>
-                                <th>Mesin QC</th>
-                                <th>Standard Waktu</th>
-                                <th>Keterangan</th>
-                                <th>Diupdate</th>
-                                <th>Aksi</th>
+                                <th>QC Machine</th>
+                                <th>Standard Time</th>
+                                <th>Notes</th>
+                                <th>Updated</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -289,16 +289,16 @@ foreach ($ct_data as $ct) {
                                 <td><span class="mesin-badge <?php echo $mk; ?>"><?php echo htmlspecialchars($ct['qc_machine']); ?></span></td>
                                 <td>
                                     <strong class="mono" style="font-size:13px;"><?php echo "{$mnt}m {$det}s"; ?></strong>
-                                    <span style="font-size:10px;color:var(--text3);margin-left:6px;">(<?php echo $ct['standard_detik']; ?> detik)</span>
+                                    <span style="font-size:10px;color:var(--text3);margin-left:6px;">(<?php echo $ct['standard_detik']; ?> sec)</span>
                                 </td>
                                 <td style="color:var(--text2);font-size:12px;"><?php echo $ct['keterangan'] ? htmlspecialchars($ct['keterangan']) : '—'; ?></td>
                                 <td class="mono" style="font-size:11px;color:var(--text3);"><?php echo date('d/m/Y H:i', strtotime($ct['updated_at'])); ?></td>
                                 <td>
-                                    <form method="POST" onsubmit="return confirm('Hapus standard ini?');" style="display:inline;">
+                                    <form method="POST" onsubmit="return confirm('Delete this standard?');" style="display:inline;">
                                         <?php echo csrfField(); ?>
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="del_id" value="<?php echo $ct['id']; ?>">
-                                        <button type="submit" class="btn-delete">Hapus</button>
+                                        <button type="submit" class="btn-delete">Delete</button>
                                     </form>
                                 </td>
                             </tr>

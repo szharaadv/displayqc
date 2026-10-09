@@ -37,7 +37,7 @@ $query = mysqli_query($conn, "
     <div class="container">
         <h2>Display QC</h2>
 
-        <a class="btn" href="../menu.php">Kembali ke Menu</a>
+        <a class="btn" href="../menu.php">Back to Menu</a>
         <br><br>
 
         <table border="1" cellpadding="10" cellspacing="0" width="100%">
